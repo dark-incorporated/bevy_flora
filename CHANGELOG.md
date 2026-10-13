@@ -44,6 +44,15 @@ All notable changes to `bevy_flora`. The format follows
   - `examples/gallery.rs`: `hull_spruce`, `hull_fir` and `hull_cypress` (mature, ages 2 and 5 and
     under snow), flagging `HULL_TRIS` when a mature crown's triangles are not `tiers * sides * 2`;
     `examples/inspect.rs`: `--hull <tiers>,<sides>[,<lift>[,<jitter>]]` and `--prism <sides>`.
+- **`TreePreset::Juniper` and `TreePreset::Fern`** (#57), evergreen undergrowth for a winter
+  forest (`TreePreset::ALL` has 20 presets; names `juniper` and `fern`). The juniper is the shrub's
+  branching (a 0.4 m stub of a trunk, many leaning, arching stems with side shoots) under spruce-style
+  needle clusters in dark blue-green, cedar bark, no autumn colour; the fern is a dozen or so arching stalks (branch density 300)
+  from a 6 cm trunk, each with single leaf cards along it, green all year. Neither has an autumn
+  colour (`autumn: None`), so a winter `FloraSeason` leaves them green and snows only their
+  up-facing parts; they are meant to be pooled with half the default `LodDistances` like `Shrub`,
+  take a `FoliagePusher`, and take `CrownStyle::Hull`. The gallery renders both in summer and
+  under snow (`undergrowth_juniper_*`, `undergrowth_fern_*`) besides every per-preset group.
 
 ## [0.36.0] - 2026-10-13
 

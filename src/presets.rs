@@ -49,11 +49,18 @@ pub enum TreePreset {
     /// flushed pink in spring, red apples through summer ([`FoliageParams::fruit`]), dropping as
     /// the leaves turn yellow-brown.
     Apple,
+    /// A low, evergreen bush of needle clusters (a juniper or yew), 1 m or so across, for the
+    /// undergrowth of a winter forest: it keeps its needles under any [`FloraSeason`](crate::FloraSeason)
+    /// and takes snow on its up-facing parts.
+    Juniper,
+    /// A clump of green arching fronds, under a metre across, for the same: no autumn colour,
+    /// snow on its fronds.
+    Fern,
 }
 
 impl TreePreset {
     /// Every preset, in display order.
-    pub const ALL: [TreePreset; 18] = [
+    pub const ALL: [TreePreset; 20] = [
         TreePreset::Oak,
         TreePreset::Pine,
         TreePreset::Willow,
@@ -72,6 +79,8 @@ impl TreePreset {
         TreePreset::Shrub,
         TreePreset::Cherry,
         TreePreset::Apple,
+        TreePreset::Juniper,
+        TreePreset::Fern,
     ];
 
     /// snake_case name of the preset.
@@ -95,6 +104,8 @@ impl TreePreset {
             TreePreset::Shrub => "shrub",
             TreePreset::Cherry => "cherry",
             TreePreset::Apple => "apple",
+            TreePreset::Juniper => "juniper",
+            TreePreset::Fern => "fern",
         }
     }
 
@@ -119,6 +130,8 @@ impl TreePreset {
             TreePreset::Shrub => shrub(),
             TreePreset::Cherry => cherry(),
             TreePreset::Apple => apple(),
+            TreePreset::Juniper => juniper(),
+            TreePreset::Fern => fern(),
         }
     }
 }
@@ -1735,6 +1748,175 @@ fn shrub() -> TreeParams {
     }
 }
 
+/// A low evergreen bush of needle clusters, 1 m or so across and a little less high: a stub of a
+/// trunk 0.4 m tall (the leader is one more) with many leaning, arching stems, each with side
+/// shoots, every one in spruce-style needles that never turn (`autumn: None`), for the
+/// undergrowth of a winter forest.
+fn juniper() -> TreeParams {
+    TreeParams {
+        seed: 42,
+        trunk: TrunkParams {
+            height: 0.4,
+            radius: 0.05,
+            radial_segments: 8,
+            height_segments: 4,
+            taper: 0.6,
+            taper_curve: 0.5,
+            flare: 1.15,
+            randomness: 0.15,
+            root_flare_count: 0,
+            root_flare_spread: 0.5,
+            root_flare_height: 0.15,
+            termination: TrunkTermination::LeaderBranch,
+            leader_length: 1.2,
+            leader_taper: 0.15,
+            leader_has_branches: true,
+            twist: 0.0,
+        },
+        branches: BranchParams {
+            start: 0.22,
+            end: 1.0,
+            density: 24.0,
+            length: 2.6,
+            angle: 38.0,
+            radius_ratio: 0.4,
+            taper: 0.75,
+            phyllotaxis_angle: 137.5,
+            randomness: 0.4,
+            up_attraction: 0.1,
+            recursion: 1,
+            sub_branch_count: 4,
+            sub_branch_scale: 0.55,
+            length_variation: 0.3,
+            sub_branch_position_bias: 0.2,
+            apical_dominance: 0.0,
+            flatness: 0.0,
+            angle_curve: 0.0,
+            crown_angle_variation: 0.0,
+            twist: 0.0,
+            gravity_strength: 0.4,
+            stiffness: 0.5,
+            break_chance: 0.0,
+            crown_shape: CrownShape::Spreading,
+            crown_influence: 0.5,
+            floor_avoidance: true,
+            floor_level: 0.0,
+            min_twig_radius: 0.003,
+        },
+        split: SplitParams::default(),
+        mesh: MeshParams::default(),
+        foliage: FoliageParams {
+            enabled: true,
+            style: LeafStyle::NeedleCluster,
+            placement: FoliagePlacement::AllBranches,
+            orientation: LeafOrientation::FollowBranch,
+            density: 10.0,
+            cluster_size: 6,
+            leaf_size: 0.14,
+            leaf_size_variation: 0.15,
+            radius_threshold: 0.06,
+            height_falloff: 0.0,
+            droop: 0.1,
+            rotation_variation: 0.4,
+            use_crown_density: true,
+            color: Color::srgb(0.14, 0.30, 0.26),
+            autumn: None,
+            ..Default::default()
+        },
+        growth: GrowthParams { maturity_age: 6.0, ..Default::default() },
+        trunk_color: Color::srgb(0.36, 0.24, 0.16),
+        bark: BarkParams { scan: Some(BarkScan::Cedar), smooth_below: 0.03, fissured_above: 0.15 },
+        style: RenderStyle::Natural,
+        crown: CrownStyle::Leaves,
+        trunk_style: TrunkStyle::Round,
+        wind: WindResponse { sway: 0.9, flutter: 0.8, sway_frequency: 1.1, flutter_frequency: 1.1 },
+    }
+}
+
+/// A clump of arching fronds, 0.4 to 1 m across, that stay green: a trunk of 6 cm, and its stems
+/// from it (branch density 300) fanning out and drooping under gravity, each a stalk of single leaf cards along it.
+fn fern() -> TreeParams {
+    TreeParams {
+        seed: 42,
+        trunk: TrunkParams {
+            height: 0.06,
+            radius: 0.015,
+            radial_segments: 6,
+            height_segments: 2,
+            taper: 0.3,
+            taper_curve: 0.5,
+            flare: 1.0,
+            randomness: 0.0,
+            root_flare_count: 0,
+            root_flare_spread: 0.5,
+            root_flare_height: 0.15,
+            termination: TrunkTermination::LeaderBranch,
+            leader_length: 0.0,
+            leader_taper: 0.15,
+            leader_has_branches: false,
+            twist: 0.0,
+        },
+        branches: BranchParams {
+            // Inside the trunk's 6 cm, so no stalk's root is buried above or below it.
+            start: 0.25,
+            end: 0.85,
+            density: 300.0,
+            length: 7.0,
+            angle: 62.0,
+            radius_ratio: 0.5,
+            taper: 0.6,
+            phyllotaxis_angle: 137.5,
+            randomness: 0.25,
+            up_attraction: 0.2,
+            recursion: 0,
+            sub_branch_count: 0,
+            sub_branch_scale: 0.4,
+            length_variation: 0.3,
+            sub_branch_position_bias: 0.0,
+            apical_dominance: 0.0,
+            flatness: 0.0,
+            angle_curve: 0.0,
+            crown_angle_variation: 0.0,
+            twist: 0.0,
+            gravity_strength: 0.4,
+            stiffness: 0.3,
+            break_chance: 0.0,
+            crown_shape: CrownShape::Cylindrical,
+            crown_influence: 0.0,
+            floor_avoidance: true,
+            floor_level: 0.0,
+            min_twig_radius: 0.002,
+        },
+        split: SplitParams::default(),
+        mesh: MeshParams::default(),
+        foliage: FoliageParams {
+            enabled: true,
+            style: LeafStyle::SingleQuad,
+            placement: FoliagePlacement::AllBranches,
+            orientation: LeafOrientation::FollowBranch,
+            density: 36.0,
+            cluster_size: 1,
+            leaf_size: 0.08,
+            leaf_size_variation: 0.2,
+            radius_threshold: 1.0,
+            height_falloff: 0.0,
+            droop: 0.3,
+            rotation_variation: 0.3,
+            use_crown_density: false,
+            color: Color::srgb(0.18, 0.36, 0.12),
+            autumn: None,
+            ..Default::default()
+        },
+        growth: GrowthParams { maturity_age: 4.0, ..Default::default() },
+        trunk_color: Color::srgb(0.28, 0.22, 0.14),
+        bark: BarkParams { scan: None, smooth_below: 0.03, fissured_above: 0.15 },
+        style: RenderStyle::Natural,
+        crown: CrownStyle::Leaves,
+        trunk_style: TrunkStyle::Round,
+        wind: WindResponse { sway: 1.1, flutter: 1.3, sway_frequency: 1.2, flutter_frequency: 1.2 },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1938,6 +2120,25 @@ mod tests {
         assert_eq!(palm.placement, FoliagePlacement::TerminalBranches);
         assert!(palm.leaf_size > 0.5);
         assert!(palm.density < 2.0);
+    }
+
+    #[test]
+    fn juniper_and_fern_are_evergreen_low_and_deterministic() {
+        assert_eq!(TreePreset::ALL.len(), 20);
+        for (preset, name) in [(TreePreset::Juniper, "juniper"), (TreePreset::Fern, "fern")] {
+            assert_eq!(preset.name(), name);
+            let params = preset.params();
+            assert!(params.foliage.autumn.is_none(), "{name} keeps its leaves in autumn");
+            assert_eq!((params.crown, params.trunk_style), (CrownStyle::Leaves, TrunkStyle::Round));
+            let a = crate::build_tree(&params, f32::INFINITY);
+            let b = crate::build_tree(&params, f32::INFINITY);
+            assert_eq!((&a.trunk, &a.foliage), (&b.trunk, &b.foliage), "{name} is not deterministic");
+            assert!(!a.foliage.is_empty(), "{name} has no leaves");
+            let top = a.trunk.positions.iter().chain(&a.foliage.positions).fold(0.0_f32, |h, p| h.max(p.y));
+            let width = a.foliage.positions.iter().fold(0.0_f32, |w, p| w.max(p.x.hypot(p.z)));
+            assert!(top < 2.0 && top > 0.2, "{name} is {top} m high");
+            assert!(width < 1.5 && width > 0.2, "{name} reaches {width} m from its stem");
+        }
     }
 
     #[test]

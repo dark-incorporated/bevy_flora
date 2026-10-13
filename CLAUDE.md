@@ -25,7 +25,7 @@ cargo run --release --example tree_file --features ron,file_watcher [-- --export
 
 ## Layout
 
-- `src/params.rs`, `crown.rs`, `presets.rs`: `TreeParams` and the 18 presets (17 trees, the cherry with spring blossom and the apple with fruit among them, and a shrub); `TreeParams::crown` (`CrownStyle`) and `trunk_style` (`TrunkStyle`) draw a low-poly conifer, off in every preset
+- `src/params.rs`, `crown.rs`, `presets.rs`: `TreeParams` and the 20 presets (17 trees, the cherry with spring blossom and the apple with fruit among them, and three undergrowth plants: a shrub and the evergreen juniper and fern); `TreeParams::crown` (`CrownStyle`) and `trunk_style` (`TrunkStyle`) draw a low-poly conifer, off in every preset
 - `src/crown_hull.rs`: the faceted hull of `CrownStyle::Hull` (pure CPU, `bevy::math` only): a stack of cones round the leaf cloud; `foliage.rs`, `lod.rs` and `pipeline.rs` dispatch to it, `MeshData::flat_shaded` and `mesh/branch.rs` make the prism trunk, `falling::hull_chips` is what a hull sheds
 - `src/skeleton.rs`, `growth.rs`: node tree and age model
 - `src/mesh/`: ring helpers (winding lives in `rings.rs`), trunk, branches, smoothing

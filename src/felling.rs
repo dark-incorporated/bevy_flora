@@ -510,7 +510,9 @@ fn saw_height(transform: &Transform, params: &TreeParams, ground: Option<&FloraG
         let top = ground.top(transform.translation.xz(), params.base_radius() * scale);
         (top - transform.translation.y).max(0.0) / scale
     });
-    (uphill + height / scale).clamp(0.05 / scale, params.trunk.height * 0.5)
+    // A trunk shorter than 0.1 m (the fern) is cut at most half way up, whatever the least cut says.
+    let most = params.trunk.height * 0.5;
+    (uphill + height / scale).clamp((0.05 / scale).min(most), most)
 }
 
 /// Where `notch` cuts into `wood`, the wood of a tree of `params` standing at `transform`, in its

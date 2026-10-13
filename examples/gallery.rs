@@ -443,6 +443,14 @@ fn scenarios() -> Vec<Scenario> {
         list.push(Scenario { name: format!("{name}_snow"), params, age: inf, season: FloraSeason::SNOW });
     }
 
+    // The evergreen undergrowth presets, in summer and under snow (their needles and fronds stay
+    // green in autumn and winter, so the snow is the only change).
+    for p in [TreePreset::Juniper, TreePreset::Fern] {
+        for (name, season) in [("summer", FloraSeason::SUMMER), ("snow", FloraSeason::SNOW)] {
+            list.push(Scenario { name: format!("undergrowth_{}_{name}", p.name()), params: preset(p), age: inf, season });
+        }
+    }
+
     list
 }
 
