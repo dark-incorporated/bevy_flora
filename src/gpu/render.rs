@@ -10,7 +10,7 @@ use bevy::render::storage::ShaderBuffer;
 use super::material::{GrowthMaterial, growth_material};
 use super::mesh::build_growth_data;
 use super::state::GrowthState;
-use super::{GpuGrowth, GpuGrowthSupport, GrowthMaterialAdded};
+use super::{GpuGrowth, GpuGrowthSupport, GrowthMaterialAdded, grows_on_gpu};
 use crate::background::{BuildInBackground, PendingBuild};
 use crate::felling::Felled;
 use crate::params::TreeParams;
@@ -63,21 +63,23 @@ pub(crate) fn detect_gpu_growth_support(
 }
 
 /// Take a tree out of the mode it is no longer in: when its [`GpuGrowth`]
-/// appears or goes, or when GPU growth becomes (un)available, drop its render
+/// appears or goes, when GPU growth becomes (un)available, or when a change of its parameters
+/// makes it (not) [`growable`](crate::TreeParams::gpu_growable), drop its render
 /// state and children so the right system rebuilds it.
 pub(crate) fn sync_growth_mode(
     mut commands: Commands,
     support: Res<GpuGrowthSupport>,
     added: Query<(), Added<GpuGrowth>>,
     mut removed: RemovedComponents<GpuGrowth>,
-    trees: Query<(Entity, &TreeRender, Has<GpuGrowth>), Without<Felled>>,
+    changed: Query<(), (Changed<ProceduralTree>, With<TreeRender>)>,
+    trees: Query<(Entity, &TreeRender, &ProceduralTree, Has<GpuGrowth>), Without<Felled>>,
 ) {
     let removed_any = removed.read().count() > 0;
-    if !(support.is_changed() || removed_any || !added.is_empty()) {
+    if !(support.is_changed() || removed_any || !added.is_empty() || !changed.is_empty()) {
         return;
     }
-    for (entity, render, gpu) in &trees {
-        let wanted = gpu && support.0;
+    for (entity, render, tree, gpu) in &trees {
+        let wanted = grows_on_gpu(gpu, &support, &tree.0);
         if wanted != matches!(render.paint, Paint::Growth(_)) {
             commands.entity(render.trunk).despawn();
             let coarse = render.lod.iter().flat_map(|(_, levels)| levels.iter().flat_map(CoarseLevel::children));
@@ -174,7 +176,7 @@ pub(crate) fn rebuild_gpu_trees(
     // Trees that only aged are updated here; the others are built on all cores below.
     let mut jobs = Vec::new();
     for (entity, tree, age, mut render, gpu, background) in &mut trees {
-        if !(gpu && support.0) {
+        if !grows_on_gpu(gpu, &support, &tree.0) {
             continue;
         }
         let building = pending.contains(entity);
@@ -223,7 +225,7 @@ pub(crate) fn rebuild_gpu_trees(
         let Ok((_, tree, age, mut render, gpu, _)) = trees.get_mut(entity) else { return };
         // A background build is out of date if the parameters changed again since it started (a
         // new one is under way) or the tree has left the GPU.
-        if background && (tree.is_changed() || !(gpu && support.0)) {
+        if background && (tree.is_changed() || !grows_on_gpu(gpu, &support, &tree.0)) {
             return;
         }
         let params = &tree.0;

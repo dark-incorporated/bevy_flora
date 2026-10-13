@@ -3,9 +3,12 @@
 use bevy::math::{Vec2, Vec3, Vec4};
 use std::f32::consts::{PI, TAU};
 
+use crate::crown_hull::{Hull, HullSpec, crown_triangles};
 use crate::growth::GrowthParams;
 use crate::mesh::MeshData;
-use crate::params::{FoliageParams, FoliagePlacement, LeafOrientation, LeafStyle, RenderStyle, TrunkParams};
+use crate::params::{
+    CrownStyle, FoliageParams, FoliagePlacement, LeafOrientation, LeafStyle, RenderStyle, TreeParams, TrunkParams,
+};
 use crate::rng::SeededRng;
 use crate::skeleton::{Node, NodeKind, Skeleton, trunk_depth};
 #[cfg(feature = "textures")]
@@ -364,19 +367,143 @@ impl FoliageMeshes {
 
 /// The leaves and the flowers of `points`, apart: see [`foliage_mesh_styled`].
 pub(crate) fn foliage_meshes(points: &[LeafPoint], foliage: &FoliageParams, style: RenderStyle) -> FoliageMeshes {
-    build_foliage(points, foliage, style, false)
+    build_foliage(points, foliage, style, false, Crown::Cards)
 }
 
 /// [`foliage_meshes`] for the coarse levels of detail: cards cut to a scanned leaf use its
 /// coarse outline (6 to 10 points), so a distant leaf costs about what a procedural one does, and
 /// flowers are simpler ([`PETAL_COARSE`]).
 pub(crate) fn foliage_meshes_coarse(points: &[LeafPoint], foliage: &FoliageParams, style: RenderStyle) -> FoliageMeshes {
-    build_foliage(points, foliage, style, true)
+    build_foliage(points, foliage, style, true, Crown::Cards)
 }
 
-fn build_foliage(points: &[LeafPoint], foliage: &FoliageParams, style: RenderStyle, coarse: bool) -> FoliageMeshes {
+/// How [`build_foliage`] draws the crown.
+#[derive(Clone, Copy)]
+enum Crown<'a> {
+    /// Leaf cards, as the leaf style says.
+    Cards,
+    /// A faceted hull ([`CrownStyle::Hull`]) in place of the cards, or nothing when the cloud is
+    /// too sparse for one. `seed` is the tree's. Fruit and flowers are still drawn.
+    Hull { hull: Option<&'a Hull>, seed: i32 },
+}
+
+/// The points a hull wraps: every leaf's position and its tip, `size` along its `up`.
+fn hull_cloud(points: &[LeafPoint]) -> Vec<Vec3> {
+    let mut cloud = Vec::with_capacity(points.len() * 2);
+    for point in points {
+        let (_, up, _) = build_basis(point.direction, point.rotation);
+        cloud.push(point.position);
+        cloud.push(point.position + up * point.size);
+    }
+    cloud
+}
+
+/// The hull `params.crown` asks for round `cloud`'s leaves, scaled down by `detail` for a coarse
+/// level (see [`HullSpec::scaled`]) and kept inside `bounds`; `None` for leaf cards or a sparse
+/// cloud. `trunk_top` is the trunk's top height.
+fn hull_for(
+    cloud: &[LeafPoint],
+    params: &TreeParams,
+    trunk_top: f32,
+    detail: Option<f32>,
+    bounds: Option<(Vec3, Vec3)>,
+) -> Option<Hull> {
+    let CrownStyle::Hull { tiers, sides, lift, jitter } = params.crown else { return None };
+    let spec = HullSpec { tiers, sides, lift, jitter };
+    let spec = detail.map_or(spec, |detail| spec.scaled(detail));
+    let mut hull = crown_triangles(&hull_cloud(cloud), trunk_top, spec, params.seed)?;
+    if let Some((lo, hi)) = bounds {
+        hull.clamp_to(lo, hi);
+    }
+    Some(hull)
+}
+
+/// The crown of a tree with `params` at level 0, leaves (or fruit and flowers) and hull as the
+/// parameters say: [`foliage_meshes`] for leaf cards. `trunk_top` is the aged trunk's top height.
+pub(crate) fn crown_meshes(points: &[LeafPoint], params: &TreeParams, trunk_top: f32) -> FoliageMeshes {
+    match params.crown {
+        CrownStyle::Leaves => foliage_meshes(points, &params.foliage, params.style),
+        CrownStyle::Hull { .. } => {
+            let hull = hull_for(points, params, trunk_top, None, None);
+            build_foliage(points, &params.foliage, params.style, false, Crown::Hull { hull: hull.as_ref(), seed: params.seed })
+        }
+    }
+}
+
+/// [`crown_meshes`] for a coarse level of detail. `kept` are the leaves it draws (the fruit and
+/// flowers of a hull tree); a hull is built from `all` the leaves, with the facets `detail`
+/// scales ([`LodSettings::hull_detail`](crate::LodSettings::hull_detail)) and clamped into `bounds`.
+pub(crate) fn crown_meshes_coarse(
+    kept: &[LeafPoint],
+    all: &[LeafPoint],
+    params: &TreeParams,
+    trunk_top: f32,
+    detail: f32,
+    bounds: Option<(Vec3, Vec3)>,
+) -> FoliageMeshes {
+    match params.crown {
+        CrownStyle::Leaves => {
+            if kept.is_empty() {
+                FoliageMeshes::default()
+            } else {
+                foliage_meshes_coarse(kept, &params.foliage, params.style)
+            }
+        }
+        CrownStyle::Hull { .. } => {
+            let hull = hull_for(all, params, trunk_top, Some(detail), bounds);
+            build_foliage(kept, &params.foliage, params.style, true, Crown::Hull { hull: hull.as_ref(), seed: params.seed })
+        }
+    }
+}
+
+/// Separate random stream for each hull facet's tint and hue, for the same reason as the leaves'.
+const HULL_FACET_SALT: i32 = 0x4641_4345;
+
+/// Separate random stream for each hull face pair's phase.
+const HULL_PHASE_SALT: i32 = 0x5048_5345;
+
+/// The vertex colour of a leaf (or facet) with the draws `tint` and `hue` (each in -1..1), alpha 1.
+fn leaf_colour(tint: f32, hue: f32, variation: f32, hue_span: f32) -> Vec4 {
+    let factor = 1.0 + tint * variation;
+    let hue = hue * hue_span;
+    Vec4::new(factor * (1.0 + 0.6 * hue), factor * (1.0 + 0.1 * hue), factor * (1.0 - 0.6 * hue), 1.0)
+}
+
+/// The flat-shaded mesh of `hull`: three vertices a facet with its face normal, the colour of the
+/// leaf formula ([`leaf_colour`]) from draws of the facet's own, `uv1` (1, 1) (a facet is lit on its
+/// upper side by the sky, so snow finds it and nothing shades it), uv (0.5, 0.5) and no flutter,
+/// only a phase, one for a side face and the underside face on the same two ring points. Every
+/// draw is a function of the seed, the tier and the side alone: a hull's colour and phase never
+/// change with the tree's age.
+fn hull_mesh(hull: &Hull, foliage: &FoliageParams, seed: i32) -> MeshData {
+    let variation = foliage.color_variation.clamp(0.0, 0.5);
+    let hue_span = foliage.hue_variation.clamp(0.0, 0.5);
+    let mut mesh = MeshData::default();
+    for facet in &hull.facets {
+        let pair = facet.tier * 64 + facet.side;
+        let phase = SeededRng::from_parts(seed ^ HULL_PHASE_SALT, pair).next_f32();
+        let mut rng = SeededRng::from_parts(seed ^ HULL_FACET_SALT, pair * 2 + u32::from(facet.under));
+        let colour = leaf_colour(2.0 * rng.next_f32() - 1.0, 2.0 * rng.next_f32() - 1.0, variation, hue_span);
+        let normal = facet.normal();
+        let first = mesh.positions.len() as u32;
+        mesh.positions.extend_from_slice(&facet.triangle);
+        mesh.normals.extend_from_slice(&[normal; 3]);
+        mesh.uvs.extend_from_slice(&[Vec2::splat(0.5); 3]);
+        mesh.colors.extend_from_slice(&[colour; 3]);
+        mesh.uv1.extend_from_slice(&[Vec2::ONE; 3]);
+        mesh.sway.extend_from_slice(&[Vec4::new(0.0, 0.0, 0.0, phase); 3]);
+        mesh.indices.extend_from_slice(&[first, first + 1, first + 2]);
+    }
+    mesh
+}
+
+fn build_foliage(points: &[LeafPoint], foliage: &FoliageParams, style: RenderStyle, coarse: bool, crown: Crown) -> FoliageMeshes {
     let mut out = FoliageMeshes::default();
-    if points.is_empty() {
+    let hull = match crown {
+        Crown::Cards => None,
+        Crown::Hull { hull, .. } => hull,
+    };
+    if points.is_empty() && hull.is_none() {
         return out;
     }
     let variation = foliage.color_variation.clamp(0.0, 0.5);
@@ -392,19 +519,23 @@ fn build_foliage(points: &[LeafPoint], foliage: &FoliageParams, style: RenderSty
         let FoliageMeshes { leaves, flowers, firsts } = &mut out;
         let first = leaves.positions.len();
         firsts[0].push(first as u32);
-        let card = scanned_card(foliage, point, coarse);
-        match foliage.style {
-            LeafStyle::CrossedPlanes => crossed_planes(leaves, point, card.as_ref()),
-            LeafStyle::SingleQuad => single_quad(leaves, point, card.as_ref()),
-            LeafStyle::ClusterSphere => cluster_sphere(leaves, point),
-            LeafStyle::StarBurst => star_burst(leaves, point, card.as_ref()),
-            LeafStyle::NeedleCluster => needle_cluster(leaves, point),
+        // A hull tree has no cards: its crown is the hull, appended last.
+        if matches!(crown, Crown::Cards) {
+            let card = scanned_card(foliage, point, coarse);
+            match foliage.style {
+                LeafStyle::CrossedPlanes => crossed_planes(leaves, point, card.as_ref()),
+                LeafStyle::SingleQuad => single_quad(leaves, point, card.as_ref()),
+                LeafStyle::ClusterSphere => cluster_sphere(leaves, point),
+                LeafStyle::StarBurst => star_burst(leaves, point, card.as_ref()),
+                LeafStyle::NeedleCluster => needle_cluster(leaves, point),
+            }
         }
         let factor = 1.0 + point.tint * variation;
-        let hue = point.hue * hue_span;
-        let colour = Vec4::new(factor * (1.0 + 0.6 * hue), factor * (1.0 + 0.1 * hue), factor * (1.0 - 0.6 * hue), 1.0);
+        let colour = leaf_colour(point.tint, point.hue, variation, hue_span);
         leaves.colors.resize(leaves.positions.len(), colour);
-        bake_leaf_inputs(leaves, point, first, rigid);
+        if matches!(crown, Crown::Cards) {
+            bake_leaf_inputs(leaves, point, first, rigid);
+        }
         // A fruit-bearing leaf's fruit, hanging below its stem, in the leaf mesh after the leaf: it
         // shares the leaf's vertex range (crown visibility; `GpuGrowth` grows it with its leaf).
         if let Some((params, ratio)) = fruit
@@ -438,10 +569,15 @@ fn build_foliage(points: &[LeafPoint], foliage: &FoliageParams, style: RenderSty
         }
     }
 
-    let center = points.iter().map(|p| p.position).sum::<Vec3>() / points.len() as f32;
-    let [leaf_ranges, flower_ranges] = &ranges;
-    shade_crown(&mut out.leaves, points, leaf_ranges, center, foliage, style);
-    shade_crown(&mut out.flowers, points, flower_ranges, center, foliage, style);
+    if !points.is_empty() {
+        let center = points.iter().map(|p| p.position).sum::<Vec3>() / points.len() as f32;
+        let [leaf_ranges, flower_ranges] = &ranges;
+        shade_crown(&mut out.leaves, points, leaf_ranges, center, foliage, style);
+        shade_crown(&mut out.flowers, points, flower_ranges, center, foliage, style);
+    }
+    if let (Some(hull), Crown::Hull { seed, .. }) = (hull, crown) {
+        out.leaves.extend(&hull_mesh(hull, foliage, seed));
+    }
     out
 }
 

@@ -264,3 +264,49 @@ fn the_plugin_can_be_added_before_the_asset_plugin() {
     assert!(!is_gpu(&app, tree));
     assert_eq!(app.world().get::<Children>(tree).unwrap().len(), 2);
 }
+
+#[test]
+fn a_hull_or_prism_tree_stays_on_the_cpu_under_gpu_growth_and_a_change_of_parameters_moves_it() {
+    use crate::params::TrunkStyle;
+    let hull = crate::crown_hull::hull_spruce();
+    let mut prism = TreePreset::Oak.params();
+    prism.trunk_style = TrunkStyle::Prism { sides: 5 };
+    let oak = TreePreset::Oak.params();
+    let mut app = app(true);
+    let spawn = |app: &mut App, params: &TreeParams| {
+        app.world_mut().spawn((ProceduralTree(params.clone()), TreeAge(f32::INFINITY), GpuGrowth)).id()
+    };
+    let (hulled, prismatic, round) = (spawn(&mut app, &hull), spawn(&mut app, &prism), spawn(&mut app, &oak));
+    app.update();
+    assert!(!is_gpu(&app, hulled), "a hull crown grew on the GPU");
+    assert!(!is_gpu(&app, prismatic), "a prism trunk grew on the GPU");
+    assert!(is_gpu(&app, round), "a plain tree with `GpuGrowth` is on the GPU");
+    for tree in [hulled, prismatic] {
+        assert!(app.world().get::<TreeRender>(tree).is_some(), "built on the CPU, not left unbuilt");
+        assert!(app.world().get::<Children>(tree).is_some_and(|children| !children.is_empty()));
+    }
+
+    // Changing a tree's parameters moves it between the paths, both ways.
+    app.world_mut().get_mut::<ProceduralTree>(hulled).unwrap().0 = oak.clone();
+    app.world_mut().get_mut::<ProceduralTree>(round).unwrap().0 = hull.clone();
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(is_gpu(&app, hulled), "a tree that lost its hull did not move to the GPU");
+    assert!(!is_gpu(&app, round), "a tree that gained a hull stayed on the GPU");
+    assert!(app.world().get::<TreeRender>(round).is_some());
+}
+
+#[test]
+fn only_a_leaf_card_tree_with_a_round_trunk_grows_on_the_gpu() {
+    use super::grows_on_gpu;
+    use crate::params::{CrownStyle, TrunkStyle};
+    let oak = TreePreset::Oak.params();
+    let hull = TreeParams { crown: CrownStyle::Hull { tiers: 3, sides: 5, lift: 0.2, jitter: 1.0 }, ..oak.clone() };
+    let prism = TreeParams { trunk_style: TrunkStyle::Prism { sides: 5 }, ..oak.clone() };
+    for (params, expected) in [(&oak, true), (&hull, false), (&prism, false)] {
+        assert_eq!(grows_on_gpu(true, &GpuGrowthSupport(true), params), expected);
+        assert!(!grows_on_gpu(false, &GpuGrowthSupport(true), params), "no component, no GPU");
+        assert!(!grows_on_gpu(true, &GpuGrowthSupport(false), params), "no support, no GPU");
+    }
+}

@@ -749,6 +749,18 @@ fn leaf_surface(p: ptr<function, PbrInput>, uv: vec2<f32>, shade: vec2<f32>) {
     (*p).specular_occlusion = (*p).specular_occlusion * shade.y;
 }
 
+// How rough a hull crown's facets are (`CrownStyle::Hull`, `flora.tree.y`): matte, as flat paper.
+const HULL_ROUGHNESS: f32 = 0.85;
+
+// The surface of a facet of a hull crown, in place, instead of `leaf_surface`: matte, with no veins,
+// no paler underside and no gloss to flare against the sun, since a facet is a plane of the
+// painted crown, not a leaf. `shade` is the facet's `uv1` (y: how much of the sky it sees).
+fn hull_surface(p: ptr<function, PbrInput>, shade: vec2<f32>) {
+    (*p).material.perceptual_roughness = HULL_ROUGHNESS;
+    (*p).diffuse_occlusion = (*p).diffuse_occlusion * shade.y;
+    (*p).specular_occlusion = (*p).specular_occlusion * shade.y;
+}
+
 // The light a leaf lets through, tinted by the species' leaves (`flora.tint`); a flower's petals
 // let through their own colour.
 fn leaf_transmission(p: PbrInput, visibility: f32, flower: bool) -> vec3<f32> {

@@ -136,10 +136,14 @@ impl TextureLibrary<'_> {
     }
 
     /// The surface of the leaves of a tree with `params`: with the scan's atlas when they ask for
-    /// one that decodes, else with the vein image (when the leaves have veins to draw).
+    /// one that decodes, else with the vein image (when the leaves have veins to draw). A hull
+    /// crown ([`CrownStyle::Hull`](crate::CrownStyle)) wears neither: its facets are flat colour.
     pub(crate) fn leaves(&mut self, params: &TreeParams) -> Surface {
         let foliage = &params.foliage;
-        let Some(images) = self.images.as_deref_mut() else { return Surface::leaves(params, None, None) };
+        let hull = matches!(params.crown, crate::params::CrownStyle::Hull { .. });
+        let Some(images) = self.images.as_deref_mut().filter(|_| !hull) else {
+            return Surface::leaves(params, None, None);
+        };
         if uses_scan(foliage) {
             let scan = foliage.scan.and_then(|scan| self.textures.leaves(images, scan));
             return Surface::leaves(params, scan, None);

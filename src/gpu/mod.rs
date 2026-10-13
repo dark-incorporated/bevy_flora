@@ -84,6 +84,10 @@ pub(crate) const ATTRIBUTE_GROWTH_OFFSET: MeshVertexAttribute =
 /// - Growth does not feed motion vectors (temporal anti-aliasing sees a growing
 ///   branch as still).
 ///
+/// A tree with a hull crown ([`CrownStyle::Hull`](crate::CrownStyle)) or a prism trunk
+/// ([`TrunkStyle::Prism`](crate::TrunkStyle)) is never grown on the GPU: it ignores this
+/// component and is built on the CPU, with a warning logged once ([`TreeParams::gpu_growable`](crate::TreeParams::gpu_growable)).
+///
 /// # Platform support
 ///
 /// The per-node state lives in a storage buffer, which WebGL2 does not have. On
@@ -97,6 +101,24 @@ pub(crate) const ATTRIBUTE_GROWTH_OFFSET: MeshVertexAttribute =
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
 #[reflect(Component)]
 pub struct GpuGrowth;
+
+/// Whether a tree with (`has`) or without [`GpuGrowth`] and `params` grows in the vertex shader
+/// on this device: `has`, the device supports it and the tree can ([`TreeParams::gpu_growable`]).
+/// A tree with a hull crown or a prism trunk asks and is built on the CPU, with a warning the
+/// first time.
+pub(crate) fn grows_on_gpu(has: bool, support: &GpuGrowthSupport, params: &crate::params::TreeParams) -> bool {
+    if !(has && support.0) {
+        return false;
+    }
+    if !params.gpu_growable() {
+        bevy::log::warn_once!(
+            "a tree with `GpuGrowth` has a hull crown or a prism trunk (`CrownStyle::Hull`, `TrunkStyle::Prism`), which grow on \
+             the CPU only; it is built there"
+        );
+        return false;
+    }
+    true
+}
 
 /// Whether this device can grow trees in the vertex shader. [`FloraPlugin`](crate::FloraPlugin)
 /// sets it once the renderer is ready, from the device's limits: `true` where

@@ -39,10 +39,9 @@ use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured, save_to_dis
 use bevy::ui::UiTargetCamera;
 use bevy::window::WindowResolution;
 use bevy_flora::{
-    CrownShape, FloraPlugin, FloraSeason, FloraWind, FoliagePlacement, GpuGrowth, GpuGrowthSupport, LeafOrientation,
-    LeafStyle,
-    MeshData,
-    NodeKind, ProceduralTree, RenderStyle, TreeAge, TreeMeshes, TreeParams, TreePreset, TrunkTermination, build_tree,
+    CrownShape, CrownStyle, FloraPlugin, FloraSeason, FloraWind, FoliagePlacement, GpuGrowth, GpuGrowthSupport,
+    LeafOrientation, LeafStyle, MeshData, NodeKind, ProceduralTree, RenderStyle, TreeAge, TreeMeshes, TreeParams,
+    TreePreset, TrunkStyle, TrunkTermination, build_tree,
 };
 
 const WINDOW: UVec2 = UVec2::new(1280, 960);
@@ -422,6 +421,28 @@ fn scenarios() -> Vec<Scenario> {
         list.push(Scenario { name: format!("season_{}_{name}", p.name()), params: preset(p), age: inf, season });
     }
 
+    // The stylised conifers: a faceted hull crown on a flat-shaded prism trunk (`CrownStyle::Hull`,
+    // `TrunkStyle::Prism`), mature, young and under heavy snow. The fir is the spruce taller, with
+    // short, flat branches. `analyze` flags a mature crown whose triangles are not tiers x sides x 2.
+    let spruce = preset(TreePreset::Spruce);
+    let mut fir = preset(TreePreset::Spruce);
+    fir.trunk.height *= 1.15;
+    fir.branches.length *= 0.7;
+    fir.branches.angle = 70.0;
+    for (name, params, tiers, sides) in [
+        ("hull_spruce", spruce, 5, 7),
+        ("hull_fir", fir, 6, 6),
+        ("hull_cypress", preset(TreePreset::Cypress), 3, 5),
+    ] {
+        let mut params = params;
+        params.crown = CrownStyle::Hull { tiers, sides, lift: 0.2, jitter: 1.0 };
+        params.trunk_style = TrunkStyle::Prism { sides: 5 };
+        for age in [inf, 2.0, 5.0] {
+            list.push(Scenario { name: format!("{name}_{age}"), params: params.clone(), age, season: FloraSeason::SUMMER });
+        }
+        list.push(Scenario { name: format!("{name}_snow"), params, age: inf, season: FloraSeason::SNOW });
+    }
+
     list
 }
 
@@ -485,6 +506,15 @@ fn analyze(params: &TreeParams, age: f32, out: &TreeMeshes) -> Stats {
     }
     if nodes == 1 && age.is_infinite() {
         flags.push("NO_BRANCHES".to_string());
+    }
+    // A mature hull crown has exactly its stack's triangles; a young one has them or, when it has
+    // too few leaves to wrap, none.
+    if let CrownStyle::Hull { tiers, sides, .. } = params.crown {
+        let expected = (tiers * sides * 2) as usize;
+        let tris = out.foliage.indices.len() / 3;
+        if tris != expected && (age.is_infinite() || tris != 0) {
+            flags.push(format!("HULL_TRIS:{tris}!={expected}"));
+        }
     }
     // The trunk starts at the ground and branches attached below a raised
     // floor may hang to their base, so the mesh check is against the lower of

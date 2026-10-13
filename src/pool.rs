@@ -69,7 +69,7 @@ use crate::params::TreeParams;
 use crate::pipeline::TreeMeshes;
 use crate::shape::TreeShape;
 use crate::skeleton::Skeleton;
-use crate::plugin::{ProceduralTree, leaf_material, material};
+use crate::plugin::{ProceduralTree, crown_material, material};
 use crate::shading::{FloraMaterial, FloraMaterialSupport, FloraWindBuffer, TextureLibrary, flora_material};
 
 /// Trees whose children are created in one frame, at most: a hundred thousand
@@ -504,7 +504,7 @@ fn make_pool_materials(
         .collect();
     for id in unpainted {
         let Some(mut pool) = pools.get_mut(id) else { continue };
-        let (wood, leaves) = (pool.params.trunk_color, pool.params.foliage.color);
+        let wood = pool.params.trunk_color;
         pool.materials = Some(if let Some(wind) = wind {
             PoolMaterials::Flora {
                 wood: flora.add(flora_material(&textures.wood(&pool.params), wind)),
@@ -513,7 +513,7 @@ fn make_pool_materials(
         } else {
             PoolMaterials::Standard {
                 wood: standard.add(material(wood)),
-                leaves: standard.add(leaf_material(leaves)),
+                leaves: standard.add(crown_material(&pool.params)),
             }
         });
     }

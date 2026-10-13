@@ -447,6 +447,26 @@ fn toon_oak() -> bevy_flora::TreeParams {
 }
 ```
 
+### Low-poly conifers: `CrownStyle::Hull` and `TrunkStyle::Prism`
+
+A game that draws its forest as a few big flat planes does not want leaf cards. `TreeParams::crown` set to `CrownStyle::Hull { tiers, sides, lift, jitter }` draws the crown as one faceted hull instead: a stack of `tiers` cones of `sides` facets each, wrapped round the tree's leaf cloud (each cone as wide as the 90th percentile of the leaves in its band, never wider than the one below), `tiers * sides * 2` flat triangles in all. `lift` keeps the crown at least that share of the tree's height above the root, so a trunk shows under it and a body can walk beneath, and `jitter` (0 to 1) knocks the rings about so no two trees are the same. `TreeParams::trunk_style` set to `TrunkStyle::Prism { sides }` meshes the wood as flat-shaded prisms with that many faces. Both default to leaf cards and a round trunk, which every preset keeps.
+
+The hull is lit matte and flat: no veins, no light through it, no scan; snow lies on the facets that face up. It works through everything else a tree does: pools take it (the coarse levels keep `LodSettings::hull_detail` of its tiers and sides, default 1.0, 0.7 and 0.5, inside level 0's bounds), impostors bake it, a prism trunk is notched, felled and bucked, fire chars it and burns its facets away, and a shake or a landing sheds chips of it (96 small triangles in its facets' colours), not whole facets. Its colours and phases are fixed by the seed and the facet, so they never change as the tree grows. It is built on the CPU: `GpuGrowth` on such a tree is ignored with a warning (`TreeParams::gpu_growable`).
+
+```rust,no_run
+use bevy_flora::{CrownStyle, TreePreset, TrunkStyle};
+
+// The spruce as a five-tier, seven-sided cone stack on a five-sided trunk.
+fn winter_spruce() -> bevy_flora::TreeParams {
+    let mut params = TreePreset::Spruce.params();
+    params.crown = CrownStyle::Hull { tiers: 5, sides: 7, lift: 0.2, jitter: 1.0 };
+    params.trunk_style = TrunkStyle::Prism { sides: 5 };
+    params
+}
+```
+
+*`cargo run --release --example inspect -- --out target/hull --preset spruce --hull 5,7 --prism 5 --mode tree --season 0,0,1`: the stylised spruce under snow.*
+
 ### Seasons
 
 `FloraSeason` is a global resource like `FloraWind`: how far the leaves have turned (`autumn`, 0 summer green to 1 every leaf in its autumn colour), how many have fallen (`leaf_fall`, 0 to 1, bare), how much snow lies on the trees (`snow`, 0 to 1) and how far flowering trees are in blossom (`blossom`, 0 to 1). The deciduous presets (oak, willow, birch, bonsai, maple, poplar, baobab, Japanese maple and cherry) carry an autumn colour, `FoliageParams::autumn`; the evergreens have `None` and keep their needles. Leaves turn one at a time, each at its own moment, and fall in the order they turned. A fallen leaf is dropped in the vertex shader, so it leaves the shadows with it, and a leaf keeps its moment as the tree grows, on `GpuGrowth`, and on a pool's levels of detail; an impostor turns in patches of a few texels and thins its crown's coverage. Snow settles on every tree, first on what faces straight up and, as more falls, on steeper faces: the tops of branches, and on leaf and needle cards the side the camera sees when that side faces up (a tier of needles is white from above and green from below), as much as the leaf sees of the sky, with a light dusting on every exposed needle so a snowy conifer reads as snowy from below too. Impostors take it by their baked normals. The season shares the wind's buffer, so changing it every frame writes 96 bytes in place and touches no material: a year costs nothing per tree.
@@ -993,6 +1013,7 @@ assert!(tree.skeleton.nodes.len() > 1);
 - **Bark.** Trunks and branches wear one of 14 bundled CC0 bark scans (colour and normal map; `TreeParams::bark`, `BarkScan`), laid out in metres on the mature tree so a growing tree's bark never slides, smooth on young wood and fissured as a branch thickens (`BarkParams`), and averaging the preset colour, so far trees, impostors and the plain-material fallback keep their colour. Compiled in by the default `textures` feature.
 - **Leaf scans and grown veins.** Seven presets cut their leaf cards to the real outline of a bundled CC0 leaf scan and wear its colour and normal map (`FoliageParams::scan`, `LeafScan`); every other leaf-shaped card has veins grown by space colonisation (`venation`), drawn by the leaf shader from one small shared image.
 - **Looks.** `TreeParams::style` draws a tree as `Natural`, `Painterly` (leaf normals point out of each clump's own centre: rounded masses) or `Toon` (banded light and an ink rim); impostors and pools follow.
+- **Low-poly conifers.** `TreeParams::crown` (`CrownStyle::Hull`: a faceted stack of cones round the leaf cloud) and `trunk_style` (`TrunkStyle::Prism`: flat-shaded prisms) draw a tree as a few big planes; pools, impostors, snow, fire, felling and falling chips follow.
 - **Seasons.** `FloraSeason` turns deciduous trees to their autumn colour (`FoliageParams::autumn`), sheds their leaves one by one (near a camera they fall to the ground), lays snow on every tree, brings flowering trees into blossom in spring (`FoliageParams::blossom`: five-petalled flowers that open and fall one by one) and hangs fruit on fruiting trees through summer (`FoliageParams::fruit`, the apple), shadows, pools, impostors and `GpuGrowth` included, at no cost per tree; `FloraSeason::of_year` drives a whole year from one number.
 - **Rain.** `FloraWetness` soaks every tree, pools and impostors included, from 0 (dry) to 1: wet bark darkens and turns glossy, the leaves' green grows richer; one value in the shared buffer, nothing per tree.
 - **No hitches.** `BuildInBackground` builds a tree off the main thread: 200 oaks planted in one frame cost it 0.5 ms instead of 23 ms, and appear a few frames later.

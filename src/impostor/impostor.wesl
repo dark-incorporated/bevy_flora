@@ -186,8 +186,10 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     p.N = N;
     p.is_orthographic = view.clip_from_view[3].w == 1.0;
     p.V = calculate_view(in.world_position, p.is_orthographic);
-    // Leaves (baked translucency 1; wood 0) lose their gloss facing the sun as the meshes' do.
-    p.material.reflectance = p.material.reflectance * mix(1.0, leaf_gloss_toward_light(p.V), saturate(baked.a));
+    // Leaves (baked translucency 1; wood 0) lose their gloss facing the sun as the meshes' do; a
+    // hull crown's facets (`flora.tree.y`) are matte and have none to lose.
+    let leaf_gloss = select(saturate(baked.a), 0.0, flora.tree.y > 0.5);
+    p.material.reflectance = p.material.reflectance * mix(1.0, leaf_gloss_toward_light(p.V), leaf_gloss);
     p.flags = MESH_FLAGS_SHADOW_RECEIVER_BIT;
     // What the crown's own leaves keep from the sky and the sun.
     p.diffuse_occlusion = vec3<f32>(baked.b);

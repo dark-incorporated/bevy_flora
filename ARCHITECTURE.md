@@ -55,6 +55,49 @@ with a plain `StandardMaterial`, just without the leaf shader.
   and `foliage_mesh` writes it as a vertex colour (`MeshData::colors`,
   `Mesh::ATTRIBUTE_COLOR`) scaled by `FoliageParams::color_variation`.
 
+## Hull crowns and prism trunks (`crown_hull.rs`)
+
+`TreeParams::crown` (`CrownStyle`) and `TreeParams::trunk_style` (`TrunkStyle`) draw a low-poly conifer: both default to
+`Leaves` and `Round`, which every preset keeps, and change nothing else of a tree.
+
+- **The hull** (`CrownStyle::Hull { tiers, sides, lift, jitter }`) replaces the leaf cards; fruit and flowers are drawn as
+  ever. `build_foliage` takes a `Crown`: with a hull it skips each point's cards, colour and sway, keeps the rest (fruit,
+  flowers, `shade_crown` for those) and appends the hull's mesh last. The pure module `crown_hull.rs` builds the hull from
+  the cloud `foliage::hull_cloud` makes of every leaf's position and tip (`position + up * size`): the cloud is cut into
+  `tiers` bands from its 5th-percentile height (lifted to `lift` of the top) to its top; a band's ring has the 90th
+  percentile of its points' distance from the trunk (never wider than the band below, at least 0.06 of the crown's height,
+  0.85 of the ring below with fewer than three points) times 1.08, its points knocked about by `jitter` (radius by up to
+  16%, height by up to 12% of a band, each tier's turn) from `SeededRng::from_parts(seed ^ HULL_SALT, tier * 64 + side)`,
+  so a hull depends on age only through the cloud. Each ring is a cone: `sides` side faces to an apex 0.55 of a band above
+  the band's top (the top tier's apex is the crown's top) and `sides` underside faces to a point 0.35 of a band above the
+  ring. No hull under 8 cloud points or 0.5 m.
+- **Its vertices** are flat: three to a facet, the face's normal, uv0 (0.5, 0.5), uv1 (1, 1) (snow's shelter needs y = 1),
+  the leaf colour formula (`leaf_colour`) from draws of the facet's own (`seed ^ HULL_FACET_SALT`, tier, side, under) and a
+  sway of `(0, 0, 0, phase)` with one phase for the side face and the underside face on the same two ring points
+  (`seed ^ HULL_PHASE_SALT`). Colour and phase are functions of the seed, the tier and the side alone, so they never change
+  with age; the season's moment, fire and `falling.rs` read the phase as they read a leaf's.
+- **Levels of detail** (`lod.rs`, `Source::coarse_leaves`): a coarse level builds its hull from every leaf, not only the
+  ones it keeps (those carry the fruit and flowers), with `LodSettings::hull_detail` (default `[1.0, 0.7, 0.5]`) scaling the
+  stack (`tiers' = max(2, round(tiers * d))`, `sides' = max(3, ...)`), and clamps the corners into level 0's bounds, so the
+  culling box of level 0 still holds it. Pools, impostors and `TreeLod` take hulls through those.
+- **The prism** (`TrunkStyle::Prism { sides }`): `skeleton_mesh_inner` gives the trunk `sides`, caps branch tubes and collars
+  at `sides`, forces no smoothing and ends with `MeshData::flat_shaded` (per-triangle vertices, face normals, the other
+  attributes copied); `buck_trees` meshes its trunk the same way. `mesh::cut` joins cut segments by position, so a
+  flat-shaded trunk is notched, felled and bucked like a round one; `log_end` takes the corners of the cut only, as a flat
+  trunk's cut has a point in the middle of each side too.
+- **Shading**: `FloraUniform::new` sets `tree.y = 1` for a hull and zeroes `leaf.x`, `leaf.z`, `leaf.w` (no light through,
+  no veins, no paler underside); `wood()` clears it. Under `FLORA_LEAF` and `flora.tree.y > 0.5`, `fragment.wesl` replaces
+  `leaf_surface` with `hull_surface` (roughness 0.85, the crown visibility of `uv1.y`) and skips `leaf_transmission`; the
+  impostor skips the gloss gate; `TextureLibrary::leaves` treats a hull as unscanned and unveined; the plain `StandardMaterial`
+  fallback paints it with `material` (no diffuse transmission). Snow is the leaf's: it lies on the facets that face up.
+- **GPU growth**: the growth shader reproduces neither the hull (rebuilt from the cloud at every age) nor flat shading, so
+  `gpu::grows_on_gpu(has, support, params)` (the one place the five checks of `plugin.rs` and `gpu/render.rs` ask) is false
+  for a tree that is not `TreeParams::gpu_growable` and warns once; `sync_growth_mode` also reacts to
+  `Changed<ProceduralTree>`, so a change of parameters moves a tree between the paths.
+- **Falling leaves** from a hull are chips, not facets: `falling::hull_chips` makes `CHIPS` (96) isosceles triangles 0.12 m
+  long in the plane of facets picked by area, in the facet's colour, each a card of one phase (its facet's, nudged by its
+  index), so a chip falls while its facet is on the tree.
+
 ## Mesh conventions
 
 Front faces are counter-clockwise; the helpers in `mesh/rings.rs` own the winding

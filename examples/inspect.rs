@@ -10,6 +10,7 @@
 //!     [--fell <deg> [--buck <m>] [--lying]] [--slope <deg>] [--on-centre] [--drop <count>[,<after>[,<every>]]]
 //!     [--autumn <seconds>[,<after>[,<every>]]] [--burn <after>[,<every>]]
 //!     [--push <x>,<z>[,<radius>[,<vx>,<vz>]]] [--notch <deg>,<depth>[,<height>]]
+//!     [--hull <tiers>,<sides>[,<lift>[,<jitter>]]] [--prism <sides>]
 //! ```
 //!
 //! The tree stands at the origin; the camera stands `--distance` metres away on the bearing
@@ -61,6 +62,12 @@
 //! (radius 0.45 m by default), and walks it at (vx, vz) m/s once the tree is ready, photographed
 //! every quarter of a second: the leaves and thin stems it walks through give way.
 //!
+//! `--hull <tiers>,<sides>[,<lift>[,<jitter>]]` draws the crown as a faceted hull of that many
+//! stacked cones ([`CrownStyle::Hull`](bevy_flora::CrownStyle), lift 0.2 and jitter 1 by default)
+//! and `--prism <sides>` the wood as flat-shaded prisms ([`TrunkStyle::Prism`](bevy_flora::TrunkStyle)):
+//! `--preset spruce --hull 5,7 --prism 5` is the stylised winter conifer, and every other option
+//! (`--fell`, `--notch`, `--burn`, `--season`, `--drop`, levels of detail) applies to it.
+//!
 //! The clock steps a fixed 1/60 s per frame, the wind is off unless `--wind` says otherwise, and
 //! nothing depends on the wall clock, so two runs write the same frames.
 
@@ -76,9 +83,9 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::time::TimeUpdateStrategy;
 use bevy_flora::{
-    BuckTree, DropLeaves, FellTree, Felled, FloraFire, FloraGround, FloraPlugin, FloraSeason, FloraWetness, FloraWind,
-    FoliagePusher, LodDistances, LodSettings, PooledTree, ProceduralTree, RenderStyle, TreeAge, TreeLod, TreeNotch,
-    TreePool, TreePreset, TreeShape, build_pool, build_tree,
+    BuckTree, CrownStyle, DropLeaves, FellTree, Felled, FloraFire, FloraGround, FloraPlugin, FloraSeason,
+    FloraWetness, FloraWind, FoliagePusher, LodDistances, LodSettings, PooledTree, ProceduralTree, RenderStyle, TreeAge,
+    TreeLod, TreeNotch, TreePool, TreePreset, TreeShape, TrunkStyle, build_pool, build_tree,
 };
 
 /// Frames rendered before the first photograph so the pool's impostor is baked and shadows exist.
@@ -153,6 +160,10 @@ struct Args {
     /// An axe's notch: the bearing of the side it is cut from (degrees from +x toward +z), its
     /// depth (share of the trunk's width) and the height of its floor.
     notch: Option<(f32, f32, f32)>,
+    /// A faceted hull crown: tiers, sides, lift and jitter (`CrownStyle::Hull`).
+    hull: Option<(u32, u32, f32, f32)>,
+    /// A prism trunk with this many sides (`TrunkStyle::Prism`).
+    prism: Option<u32>,
 }
 
 fn usage() -> ! {
@@ -163,7 +174,8 @@ fn usage() -> ! {
          [--no-impostors] [--level <0|1|2|3>] [--empty] [--no-msaa] [--style <natural|painterly|toon>] \
          [--colliders] [--season <autumn>,<leaf fall>[,<snow>[,<blossom>]]] [--wet <0..1>] [--fell <deg> [--buck <m>] [--lying]] [--slope <deg>] \
          [--on-centre] [--drop <count>[,<after>[,<every>]]] [--autumn <seconds>[,<after>[,<every>]]] \
-         [--burn <after>[,<every>]] [--push <x>,<z>[,<radius>[,<vx>,<vz>]]] [--notch <deg>,<depth>[,<height>]]"
+         [--burn <after>[,<every>]] [--push <x>,<z>[,<radius>[,<vx>,<vz>]]] [--notch <deg>,<depth>[,<height>]] \
+         [--hull <tiers>,<sides>[,<lift>[,<jitter>]]] [--prism <sides>]"
     );
     std::process::exit(2);
 }
@@ -208,6 +220,8 @@ fn parse_args() -> Args {
         burn: None,
         push: None,
         notch: None,
+        hull: None,
+        prism: None,
     };
     let mut have_out = false;
     let mut it = std::env::args().skip(1).peekable();
@@ -327,6 +341,16 @@ fn parse_args() -> Args {
                     _ => usage(),
                 };
             }
+            "--hull" => {
+                let p = floats(&it.next().unwrap_or_else(|| usage()));
+                args.hull = match p[..] {
+                    [tiers, sides] => Some((tiers as u32, sides as u32, 0.2, 1.0)),
+                    [tiers, sides, lift] => Some((tiers as u32, sides as u32, lift, 1.0)),
+                    [tiers, sides, lift, jitter] => Some((tiers as u32, sides as u32, lift, jitter)),
+                    _ => usage(),
+                };
+            }
+            "--prism" => args.prism = Some(value(&mut it)),
             "--notch" => {
                 let p = floats(&it.next().unwrap_or_else(|| usage()));
                 args.notch = match p[..] {
@@ -516,6 +540,12 @@ fn setup(
     let mut params = shoot.args.preset.params();
     params.seed = shoot.args.seed;
     params.style = shoot.args.style;
+    if let Some((tiers, sides, lift, jitter)) = shoot.args.hull {
+        params.crown = CrownStyle::Hull { tiers, sides, lift, jitter };
+    }
+    if let Some(sides) = shoot.args.prism {
+        params.trunk_style = TrunkStyle::Prism { sides };
+    }
     let mature = build_tree(&params, shoot.args.age);
     shoot.height = mature
         .trunk

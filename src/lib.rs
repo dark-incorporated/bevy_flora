@@ -154,6 +154,15 @@
 //! small image every such leaf shares. Both need the `textures` feature only for the scans: the
 //! veins are grown at run time.
 //!
+//! # Low-poly conifers: hull crowns and prism trunks
+//!
+//! [`TreeParams::crown`] ([`CrownStyle`]) can draw the crown as one faceted hull instead of leaf
+//! cards: `CrownStyle::Hull { tiers, sides, lift, jitter }` wraps a stack of cones round the leaf
+//! cloud ([`crown_hull`]), `tiers * sides * 2` flat triangles that read as a few big planes.
+//! [`TreeParams::trunk_style`] ([`TrunkStyle`]) meshes the wood as flat-shaded prisms. Both work
+//! through every way a tree is drawn (pools, levels of detail, impostors, felling, fire, snow) but
+//! `GpuGrowth`, which builds such a tree on the CPU ([`TreeParams::gpu_growable`]).
+//!
 //! # Looks: natural, painterly, toon
 //!
 //! [`TreeParams::style`] ([`RenderStyle`]) changes how a tree is lit, not its shape. `Painterly`
@@ -358,6 +367,7 @@
 
 pub mod background;
 pub mod crown;
+pub mod crown_hull;
 pub mod falling;
 pub mod felling;
 pub mod fire;
@@ -401,8 +411,9 @@ pub use impostor::{IMPOSTOR_VIEWS, ImpostorAtlas, ImpostorMaterial};
 pub use lod::{LodDistances, LodSettings, TreeLod, build_lods};
 pub use mesh::MeshData;
 pub use params::{
-    BarkParams, BarkScan, BranchParams, FoliageParams, FoliagePlacement, FruitParams, LeafOrientation, LeafScan,
-    LeafShading, LeafStyle, MeshParams, RenderStyle, SplitParams, TreeParams, TrunkParams, TrunkTermination,
+    BarkParams, BarkScan, BranchParams, CrownStyle, FoliageParams, FoliagePlacement, FruitParams, LeafOrientation,
+    LeafScan, LeafShading, LeafStyle, MeshParams, RenderStyle, SplitParams, TreeParams, TrunkParams,
+    TrunkStyle, TrunkTermination,
     WindResponse,
 };
 pub use pipeline::{TreeMeshes, build_tree};
@@ -434,7 +445,7 @@ pub mod prelude {
         Burnt, FallenFruit, FallingFruit, FruitFell, FruitParams, TreeBurnt, TreeFruit,
         GpuGrowth, Growing, GustFront,
         LeafBurst, LeafScan, LodDistances, LodScale, LodSettings, PooledTree, ProceduralTree, ProceduralTreeAsset,
-        RenderStyle,
+        RenderStyle, CrownStyle, TrunkStyle,
         Scatter, ScatterPoint, SeeThroughTrees, TreeAge, TreeBucked, TreeGenerated, TreeLanded, TreeLod, TreeLog,
         TreeMature, TreeNotch, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes, TreeShape, TreeStump,
         WindResponse, WoodCapsule, build_pool,

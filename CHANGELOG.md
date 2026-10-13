@@ -5,6 +5,46 @@ All notable changes to `bevy_flora`. The format follows
 [Semantic Versioning](https://semver.org/). Before 1.0, a minor version bump
 (`0.x`) may break the API.
 
+## [Unreleased]
+
+### Added
+
+- **Hull crowns and prism trunks** (#49). `TreeParams::crown` (`CrownStyle`, default `Leaves`) can be
+  `Hull { tiers, sides, lift, jitter }`: the leaf cards are not drawn and a faceted stack of cones
+  is wrapped round the leaf cloud instead (`tiers * sides * 2` flat triangles), and
+  `TreeParams::trunk_style` (`TrunkStyle`, default `Round`) can be `Prism { sides }`: the trunk has
+  that many faces, branch tubes and collars no more, nothing is smoothed, and every triangle of the
+  wood has its own vertices and face normal (`MeshData::flat_shaded`). Every preset keeps leaf cards
+  and a round trunk and renders as before; both fields are in `.tree.ron` files and under the
+  `serde` feature (a file that leaves them out gets the defaults). `TreeParams::gpu_growable()` is
+  true only for leaf cards on a round trunk.
+  - New pure module `crown_hull` (`HullSpec`, `Hull`, `Facet`, `crown_triangles`, `crown_extent`,
+    `percentile`): the cloud is each leaf's position and its tip (`position + up * size`), cut into
+    `tiers` bands from its 5th-percentile height (lifted to `lift` of the top) to its top; a band's
+    ring is the 90th percentile of its points' distance from the trunk (never wider than the band
+    below, at least 0.06 of the crown's height), times 1.08, knocked about by `jitter` from
+    `SeededRng::from_parts(seed ^ HULL_SALT, tier * 64 + side)`, so a hull depends on age only
+    through the cloud; no hull under 8 points or half a metre. The facets' colours (the leaf
+    formula, from draws of their own) and phases (one for a side face and the underside face on the
+    same ring points) are functions of the seed, the tier and the side alone.
+  - `LodSettings::hull_detail` (default `[1.0, 0.7, 0.5]`): a coarse level's hull has `tiers` and
+    `sides` times it (at least 2 and 3), is built from every leaf, not only the ones the level
+    keeps (those carry fruit and flowers), and is clamped into level 0's bounds.
+  - Shading: `FloraUniform::tree.y` is 1 for a hull; `fragment.wesl` lights its facets matte
+    (`hull_surface`, roughness 0.85, no veins, no scan, no light through them) and the impostor
+    skips the leaf gloss gate; snow lies on the facets that face up as on leaves. Plain-material
+    devices paint a hull without diffuse transmission.
+  - `GpuGrowth` is ignored for a tree that is not `gpu_growable`, with a warning logged once: it is
+    built on the CPU (`gpu::grows_on_gpu` is the one place that asks), and a change of parameters
+    moves a tree between the paths (`sync_growth_mode` reacts to `Changed<ProceduralTree>`).
+  - Falling leaves from a hull are chips, not facets: `CHIPS` (96) isosceles triangles 0.12 m long
+    in the plane of facets picked by area, in their colours, each its facet's moment in the season.
+  - `buck_trees` meshes a prism trunk as the tree has it, and a log's end takes the corners of the
+    cut only (a flat-shaded trunk's cut has a point in the middle of each side too).
+  - `examples/gallery.rs`: `hull_spruce`, `hull_fir` and `hull_cypress` (mature, ages 2 and 5 and
+    under snow), flagging `HULL_TRIS` when a mature crown's triangles are not `tiers * sides * 2`;
+    `examples/inspect.rs`: `--hull <tiers>,<sides>[,<lift>[,<jitter>]]` and `--prism <sides>`.
+
 ## [0.36.0] - 2026-10-13
 
 Orthographic cameras, for a game with an isometric camera (issues #51 and #52): the levels of

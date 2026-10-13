@@ -34,7 +34,7 @@ use crate::gpu::GpuGrowth;
 use crate::ground::FloraGround;
 use crate::mesh::MeshData;
 use crate::mesh::cut::{Notch, carve_notch, cut, fell_notched};
-use crate::mesh::branch::{bark_tile, skeleton_mesh};
+use crate::mesh::branch::{bark_tile, prism_sides, skeleton_mesh};
 use crate::mesh::trunk::{trunk_mesh_with, trunk_pieces};
 use crate::pipeline::{aged_skeleton, build_aged};
 use crate::plugin::{CoarseLevel, Growing, Paint, ProceduralTree, TreeAge, TreeRender, paint_child};
@@ -646,8 +646,16 @@ pub(crate) fn buck_trees(
         // The trunk alone, as the tree had it: the same rings and bark.
         let skeleton = aged_skeleton(&render.full, params, age.map_or(f32::INFINITY, |age| age.0));
         let node = &skeleton.nodes[0];
-        let pieces = trunk_pieces(&params.trunk, node);
-        let trunk = trunk_mesh_with(&params.trunk, node, params.seed, pieces, bark_tile(params));
+        let mut trunk_params = params.trunk.clone();
+        let prism = prism_sides(params);
+        if let Some(sides) = prism {
+            trunk_params.radial_segments = sides;
+        }
+        let pieces = trunk_pieces(&trunk_params, node);
+        let mut trunk = trunk_mesh_with(&trunk_params, node, params.seed, pieces, bark_tile(params));
+        if prism.is_some() {
+            trunk = trunk.flat_shaded();
+        }
         let top = trunk.positions.iter().map(|p| p.y).fold(0.0, f32::max);
         let face = cut_face.get(&mut textures, &mut materials);
         let scale = fall.base.scale.y.max(1.0e-4);
@@ -713,7 +721,19 @@ pub(crate) fn buck_trees(
 /// centre, and its mean radius to the middle of its sides, so a polygonal log neither floats
 /// on its corners nor sinks by more than them).
 fn log_end(outlines: &[Vec<Vec3>]) -> Option<(Vec3, f32)> {
-    let trunk = outlines.iter().max_by_key(|o| o.len()).filter(|o| o.len() >= 3)?;
+    let outline = outlines.iter().max_by_key(|o| o.len()).filter(|o| o.len() >= 3)?;
+    // Only its corners: a flat-shaded trunk's cut has a point in the middle of each side too (where
+    // the cut crosses the diagonal of the side's two triangles), which would pull the mean in.
+    let n = outline.len();
+    let corners: Vec<Vec3> = (0..n)
+        .filter(|&i| {
+            let (before, here, after) = (outline[(i + n - 1) % n], outline[i], outline[(i + 1) % n]);
+            let (u, v) = (here - before, after - here);
+            u.cross(v).length() > 0.035 * u.length() * v.length()
+        })
+        .map(|i| outline[i])
+        .collect();
+    let trunk = if corners.len() >= 3 { &corners } else { outline };
     let centre = trunk.iter().copied().sum::<Vec3>() / trunk.len() as f32;
     let radius = trunk.iter().map(|p| p.distance(centre)).sum::<f32>() / trunk.len() as f32;
     Some((centre, radius * (std::f32::consts::PI / trunk.len() as f32).cos()))
@@ -1278,5 +1298,42 @@ mod tests {
         assert!(normals.iter().any(|n| n.x > 0.5 && n.y < -0.5), "the fallen tree has no notch face");
         assert!(normals.iter().any(|n| n.y < -0.99), "the fallen tree has no cut behind its notch");
         assert!(!normals.iter().any(|n| n.y > 0.0), "the fallen tree carries the notch's floor");
+    }
+
+    #[test]
+    fn a_prism_trunk_can_be_notched_felled_and_bucked() {
+        use crate::params::TrunkStyle;
+        let params = crate::crown_hull::hull_spruce();
+
+        // Notched: its faces are drawn, and the notch is felled at its floor.
+        for (floor, cut_height) in [(0.8, 0.3), (0.6, 0.5)] {
+            let mut app = app();
+            let tree = app.world_mut().spawn((ProceduralTree(params.clone()), Transform::default())).id();
+            app.update();
+            app.world_mut().entity_mut(tree).insert(TreeNotch { direction: Vec2::X, height: floor, depth: 0.3 });
+            app.update();
+            let faces = app.world().get::<NotchCarved>(tree).and_then(|carved| carved.faces);
+            assert!(faces.is_some(), "a prism trunk's notch has no faces");
+            app.world_mut().entity_mut(tree).insert(FellTree { direction: Vec2::X, cut_height, speed: 4.0, ..Default::default() });
+            assert_eq!(settle(&mut app, 900), 1, "the notched prism (floor {floor}) did not land exactly once");
+            let felled = app.world().get::<Felled>(tree).unwrap().clone();
+            assert!(felled.at_rest && (felled.fall.hinge.y - floor).abs() < 1e-4, "cut at {}, floor {floor}", felled.fall.hinge.y);
+        }
+
+        // Bucked: logs a length long, as thick as the round trunk's (a flat trunk's cut has a point
+        // in the middle of each side, which must not pull the log's radius in).
+        let (mut app, mut round_app) = (self::app(), self::app());
+        let bucked = fell_and_buck(&mut app, &params, Vec3::ZERO, Vec2::Y);
+        let round = TreeParams { trunk_style: TrunkStyle::Round, ..params.clone() };
+        let round_logs = fell_and_buck(&mut round_app, &round, Vec3::ZERO, Vec2::Y);
+        assert!(!bucked.logs.is_empty(), "the prism trunk made no logs");
+        let radius = |app: &bevy::app::App, bucked: &TreeBucked| app.world().get::<TreeLog>(bucked.logs[0]).unwrap().capsule.radius;
+        for &entity in &bucked.logs {
+            let log = app.world().get::<TreeLog>(entity).unwrap();
+            let length = log.capsule.a.distance(log.capsule.b);
+            assert!((length - 2.0).abs() < 0.04 && log.capsule.radius >= 0.08, "{log:?}");
+        }
+        let (flat, smooth) = (radius(&app, &bucked), radius(&round_app, &round_logs));
+        assert!((0.7..=1.1).contains(&(flat / smooth)), "the prism log is {flat} thick, the round one {smooth}");
     }
 }

@@ -254,6 +254,21 @@ mod tests {
 
     #[cfg(feature = "ron")]
     #[test]
+    fn a_hull_crown_and_a_prism_trunk_survive_a_tree_file_and_a_file_may_leave_them_out() {
+        let params = crate::crown_hull::hull_spruce();
+        let text = params.to_ron();
+        assert!(text.contains("Hull") && text.contains("Prism"), "{text}");
+        assert_eq!(TreeParams::from_ron(&text).unwrap(), params);
+        // A file written before they existed has neither: leaf cards and a round trunk.
+        let old = TreeParams::from_ron("(seed: 3)").unwrap();
+        assert_eq!((old.crown, old.trunk_style), (crate::CrownStyle::Leaves, crate::TrunkStyle::Round));
+        let by_hand = TreeParams::from_ron("(crown: Hull(tiers: 4, sides: 6, lift: 0.1, jitter: 0.5), trunk_style: Prism(sides: 4))").unwrap();
+        assert_eq!(by_hand.crown, crate::CrownStyle::Hull { tiers: 4, sides: 6, lift: 0.1, jitter: 0.5 });
+        assert_eq!(by_hand.trunk_style, crate::TrunkStyle::Prism { sides: 4 });
+    }
+
+    #[cfg(feature = "ron")]
+    #[test]
     fn a_tree_file_may_leave_fields_out_but_not_misspell_them() {
         let partial = TreeParams::from_ron("(seed: 7, trunk: (height: 9.0))").unwrap();
         let defaults = TreeParams::default();

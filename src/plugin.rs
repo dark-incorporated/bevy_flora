@@ -40,7 +40,7 @@ use crate::falling::{
     season_sheds, shake_leaves_loose, shed_landed_leaves, shed_with_season,
 };
 use crate::gpu::render::{GrowthPaint, detect_gpu_growth_support, rebuild_gpu_trees, sync_growth_mode};
-use crate::gpu::{GpuGrowth, GpuGrowthSupport};
+use crate::gpu::{GpuGrowth, GpuGrowthSupport, grows_on_gpu};
 use crate::impostor::{ImpostorSupport, drive_impostor_bakes, start_impostor_bakes};
 use crate::params::TreeParams;
 use crate::pipeline::{aged_skeleton, build_aged};
@@ -384,6 +384,17 @@ pub(crate) fn leaf_material(base_color: bevy::color::Color) -> StandardMaterial 
     }
 }
 
+/// The plain material of a tree's crown for devices without the flora shaders: a leaf's, which
+/// lets light through, or a hull's ([`CrownStyle::Hull`](crate::CrownStyle)), which is matte
+/// paper like its trunk.
+pub(crate) fn crown_material(params: &crate::params::TreeParams) -> StandardMaterial {
+    if matches!(params.crown, crate::params::CrownStyle::Hull { .. }) {
+        material(params.foliage.color)
+    } else {
+        leaf_material(params.foliage.color)
+    }
+}
+
 /// Advance the age of every [`Growing`] tree that already has render state, and send
 /// [`TreeMature`] for each that reaches its mature age this frame.
 pub fn grow_trees(
@@ -472,7 +483,7 @@ pub fn rebuild_trees(
     let mut jobs = Vec::new();
     for (entity, tree, age, mut render, gpu, background, lod) in &mut trees {
         // A tree that grows on the GPU is `rebuild_gpu_trees`'s.
-        if gpu && support.0 {
+        if grows_on_gpu(gpu, &support, &tree.0) {
             continue;
         }
         // Left over from before the tree stopped growing on the GPU;
@@ -516,7 +527,7 @@ pub fn rebuild_trees(
         let Ok((_, tree, _, render, gpu, _, _)) = trees.get_mut(entity) else { return };
         // A background build is out of date if the parameters changed again since it started (a
         // new one is under way) or the tree has moved to the GPU.
-        if out.background && (tree.is_changed() || (gpu && support.0)) {
+        if out.background && (tree.is_changed() || grows_on_gpu(gpu, &support, &tree.0)) {
             return;
         }
         let params = &tree.0;
@@ -531,7 +542,7 @@ pub fn rebuild_trees(
                 } else {
                     Paint::Standard {
                         trunk: materials.add(material(params.trunk_color)),
-                        foliage: materials.add(leaf_material(params.foliage.color)),
+                        foliage: materials.add(crown_material(params)),
                     }
                 };
                 let mut trunk_child = commands.spawn((TreeTrunkMesh, Visibility::Hidden, ChildOf(entity)));

@@ -17,10 +17,10 @@ use bevy::ecs::prelude::{Component, ReflectComponent};
 use bevy::math::Vec3;
 use bevy::reflect::Reflect;
 
-use crate::foliage::{FoliageMeshes, LeafPoint, collect_leaf_points, foliage_meshes_coarse};
+use crate::foliage::{FoliageMeshes, LeafPoint, collect_leaf_points, crown_meshes_coarse};
 use crate::mesh::branch::{Coarseness, skeleton_mesh_coarse};
 use crate::params::TreeParams;
-use crate::pipeline::{TreeMeshes, build_aged};
+use crate::pipeline::{TreeMeshes, build_aged, trunk_top};
 use crate::skeleton::{Node, Skeleton, generate_skeleton};
 
 /// How far from the camera each level of detail takes over, in metres: level 1
@@ -68,6 +68,10 @@ pub struct LodSettings {
     /// Sides of the trunk and the branch tubes at each level. A node that has
     /// fewer sides at level 0 keeps them; the level 0 entry is not used.
     pub radial_segments: [u32; 3],
+    /// How much of a hull crown's stack ([`CrownStyle::Hull`](crate::CrownStyle)) each level
+    /// keeps: its `tiers` and `sides` times this, at least 2 and 3. Level 0's entry is not used.
+    /// The coarse levels' hull is built from every leaf and kept inside level 0's bounds.
+    pub hull_detail: [f32; 3],
     /// Where the levels switch, for a pool's trees and a tree with [`TreeLod`].
     pub distances: LodDistances,
 }
@@ -80,6 +84,7 @@ impl Default for LodSettings {
             lod2_min_radius: 0.05,
             lod2_leaf_keep: 8,
             radial_segments: [8, 5, 4],
+            hull_detail: [1.0, 0.7, 0.5],
             distances: LodDistances::default(),
         }
     }
@@ -152,12 +157,14 @@ pub(crate) fn coarse_levels(fine: &TreeMeshes, params: &TreeParams, lod: &LodSet
         lod.lod1_min_radius,
         lod.lod1_leaf_keep,
         lod.radial_segments[1],
+        lod.hull_detail[1],
     );
     let lod2 = source.coarse(
         2,
         lod.lod2_min_radius,
         lod.lod2_leaf_keep,
         lod.radial_segments[2],
+        lod.hull_detail[2],
     );
     [lod1, lod2]
 }
@@ -188,7 +195,7 @@ const REACH_TOLERANCE: f32 = 0.08;
 
 impl Source<'_> {
     /// Level `level` of the tree.
-    fn coarse(&self, level: u32, min_radius: f32, leaf_keep: u32, sides: u32) -> TreeMeshes {
+    fn coarse(&self, level: u32, min_radius: f32, leaf_keep: u32, sides: u32, hull_detail: f32) -> TreeMeshes {
         let skeleton = prune(&self.fine.skeleton, min_radius, &self.reaching_nodes);
 
         // No smoothing, collars or adaptive sides, and a coarser trunk: the
@@ -207,7 +214,7 @@ impl Source<'_> {
         let rings = AXIS_POINTS[level as usize];
         let trunk = skeleton_mesh_coarse(&skeleton, &wood_params, Coarseness { sides, rings });
 
-        let crown = self.coarse_leaves(leaf_keep);
+        let crown = self.coarse_leaves(leaf_keep, hull_detail);
         TreeMeshes {
             trunk,
             foliage: crown.leaves,
@@ -221,7 +228,7 @@ impl Source<'_> {
     /// fall short, each as large as the room to the full tree's bounds allows, up
     /// to `sqrt(keep)` times its size: fewer, bigger leaves cover about as much of
     /// the crown.
-    fn coarse_leaves(&self, keep: u32) -> FoliageMeshes {
+    fn coarse_leaves(&self, keep: u32, hull_detail: f32) -> FoliageMeshes {
         let keep = keep.max(1) as usize;
         let scale = (keep as f32).sqrt();
         let mut chosen: Vec<bool> = (0..self.points.len()).map(|i| i % keep == 0).collect();
@@ -255,11 +262,14 @@ impl Source<'_> {
                 ..p.clone()
             })
             .collect();
-        if kept.is_empty() {
-            FoliageMeshes::default()
-        } else {
-            foliage_meshes_coarse(&kept, &self.params.foliage, self.params.style)
-        }
+        crown_meshes_coarse(
+            &kept,
+            self.points,
+            self.params,
+            trunk_top(&self.fine.skeleton),
+            hull_detail,
+            self.bounds,
+        )
     }
 
     /// How much `point`'s leaf may be scaled (between 1 and `scale`) without
@@ -460,5 +470,34 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_hull_tree_has_a_smaller_hull_at_each_level_inside_level_zeros_bounds() {
+        let params = crate::crown_hull::hull_spruce();
+        let lods = build_lods(&params, f32::INFINITY, &LodSettings::default());
+        // 5 x 7 at level 0; level 1 keeps 0.7 of it (4 x 5), level 2 half (3 x 4).
+        let facets: Vec<usize> = lods.iter().map(|m| m.foliage.indices.len() / 3).collect();
+        assert_eq!(facets, [70, 40, 24]);
+        let counts = lods.each_ref().map(triangles);
+        assert!(counts[0] > counts[1] && counts[1] > counts[2], "{counts:?} do not decrease");
+        let (fine_lo, fine_hi) = bounds(&lods[0]).expect("tree has geometry");
+        for (level, lod) in lods.iter().enumerate().skip(1) {
+            let (lo, hi) = bounds(lod).expect("tree has geometry");
+            let overshoot = (fine_lo - lo).max(hi - fine_hi).max_element();
+            assert!(overshoot <= 0.01, "level {level} reaches {overshoot} m beyond level 0");
+            assert_indices_valid(&lod.foliage, &format!("hull level {level}"));
+            assert_indices_valid(&lod.trunk, &format!("prism level {level}"));
+            // The crown is still a crown: as tall as level 0's.
+            let height = |m: &TreeMeshes| m.foliage.positions.iter().map(|p| p.y).fold(f32::MIN, f32::max);
+            assert!((height(lod) - height(&lods[0])).abs() < 0.1 * height(&lods[0]), "level {level} is not as tall");
+        }
+        // Level 0 is `build_tree` as ever, hull and prism included.
+        let fine = crate::build_tree(&params, f32::INFINITY);
+        assert_eq!((&lods[0].trunk, &lods[0].foliage), (&fine.trunk, &fine.foliage));
+        // `hull_detail` sets how much of the stack a level keeps.
+        let full = LodSettings { hull_detail: [1.0; 3], ..LodSettings::default() };
+        let same: Vec<usize> = build_lods(&params, f32::INFINITY, &full).iter().map(|m| m.foliage.indices.len() / 3).collect();
+        assert_eq!(same, [70, 70, 70]);
     }
 }

@@ -648,6 +648,51 @@ pub enum RenderStyle {
     Toon,
 }
 
+/// How a tree's crown is drawn: as the cards of its leaves, or as one faceted hull.
+///
+/// `Hull` is the stylised conifer of a low-poly game: the leaf cloud is not drawn; a stack of
+/// `tiers` cones of `sides` facets each is wrapped around it instead ([`crate::crown_hull`]), so
+/// the crown reads as a few big flat planes. [`FoliageParams::enabled`] still decides whether
+/// there is a crown (leaf points are what the hull wraps); fruit and flowers are drawn as ever.
+/// The hull has `tiers * sides * 2` triangles and no leaf cards, scan or veins; its facets are
+/// lit matte and flat, and a tree that has one is never grown on the GPU
+/// ([`TreeParams::gpu_growable`]).
+#[derive(Default, Clone, Copy, Debug, PartialEq, Reflect)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CrownStyle {
+    /// Leaf cards, as [`FoliageParams::style`] says.
+    #[default]
+    Leaves,
+    /// A faceted stack of cones around the leaf cloud.
+    Hull {
+        /// Cones stacked from the crown's base to its top (at least 1).
+        tiers: u32,
+        /// Facets round each cone (at least 3).
+        sides: u32,
+        /// The crown starts at least this share of its top's height above the root, so a trunk
+        /// shows under it and a body can walk beneath (0..1).
+        lift: f32,
+        /// How far each tier's ring is knocked about, 0 (regular cones) to 1: the ring's radius
+        /// by up to 16%, its height by up to 12% of a tier, and each tier's turn.
+        jitter: f32,
+    },
+}
+
+/// How a tree's trunk and branches are meshed.
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq, Reflect)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TrunkStyle {
+    /// Round, smooth-shaded wood, as [`TrunkParams::radial_segments`] and [`MeshParams`] say.
+    #[default]
+    Round,
+    /// Flat-shaded prisms: the trunk has `sides` faces (at least 3), branch tubes and collars at
+    /// most that many, no smoothing, and every triangle has its own vertices and face normal.
+    Prism {
+        /// Faces round the trunk.
+        sides: u32,
+    },
+}
+
 /// Complete description of a tree.
 ///
 /// It is also an [`Asset`]: a [`ProceduralTreeAsset`](crate::ProceduralTreeAsset) draws a tree
@@ -678,9 +723,21 @@ pub struct TreeParams {
     pub bark: BarkParams,
     /// How the tree is drawn: naturally lit, as painted clumps, or as a toon with an ink rim.
     pub style: RenderStyle,
+    /// How the crown is drawn: leaf cards (the default) or a faceted hull ([`CrownStyle`]).
+    pub crown: CrownStyle,
+    /// How the wood is meshed: round and smooth (the default) or flat-shaded prisms ([`TrunkStyle`]).
+    pub trunk_style: TrunkStyle,
 }
 
 impl TreeParams {
+    /// Whether this tree can grow on the GPU ([`GpuGrowth`](crate::GpuGrowth)): only a round
+    /// trunk under leaf cards can. A hull crown is rebuilt from the leaf cloud at every age and a
+    /// prism trunk is flat-shaded per triangle, neither of which the growth shader reproduces,
+    /// so such a tree is built on the CPU whatever its components say.
+    pub fn gpu_growable(&self) -> bool {
+        matches!(self.crown, CrownStyle::Leaves) && matches!(self.trunk_style, TrunkStyle::Round)
+    }
+
     /// How far the grown trunk reaches from its axis at the ground, in metres: its radius
     /// widened by the flare, and by the root ridges when it has them. The footprint
     /// [`FloraGround::footing`](crate::FloraGround::footing) stands a tree on.
@@ -708,6 +765,8 @@ impl Default for TreeParams {
             trunk_color: Color::srgb(0.545, 0.271, 0.075),
             bark: BarkParams::default(),
             style: RenderStyle::Natural,
+            crown: CrownStyle::Leaves,
+            trunk_style: TrunkStyle::Round,
         }
     }
 }

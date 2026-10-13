@@ -57,6 +57,44 @@ impl MeshData {
         self.indices.is_empty()
     }
 
+    /// The same surface shaded flat: every triangle gets three vertices of its own carrying the
+    /// face's normal, and copies of the original vertices' texture coordinates, colours, second
+    /// coordinates and sway, so a prism reads as planes. A triangle with no area keeps its first
+    /// vertex's normal. The vertex count is three times the triangle count.
+    pub fn flat_shaded(&self) -> MeshData {
+        let count = self.indices.len();
+        let mut out = MeshData {
+            positions: Vec::with_capacity(count),
+            normals: Vec::with_capacity(count),
+            uvs: Vec::with_capacity(count),
+            colors: Vec::with_capacity(if self.colors.is_empty() { 0 } else { count }),
+            uv1: Vec::with_capacity(if self.uv1.is_empty() { 0 } else { count }),
+            sway: Vec::with_capacity(if self.sway.is_empty() { 0 } else { count }),
+            indices: (0..count as u32).collect(),
+        };
+        for tri in self.indices.as_chunks::<3>().0 {
+            let [a, b, c] = tri.map(|i| self.positions[i as usize]);
+            let face = (b - a).cross(c - a);
+            let normal = if face.length_squared() > 1.0e-20 { face.normalize() } else { self.normals[tri[0] as usize] };
+            for &i in tri {
+                let i = i as usize;
+                out.positions.push(self.positions[i]);
+                out.normals.push(normal);
+                out.uvs.push(self.uvs[i]);
+                if !self.colors.is_empty() {
+                    out.colors.push(self.colors[i]);
+                }
+                if !self.uv1.is_empty() {
+                    out.uv1.push(self.uv1[i]);
+                }
+                if !self.sway.is_empty() {
+                    out.sway.push(self.sway[i]);
+                }
+            }
+        }
+        out
+    }
+
     /// Convert into a Bevy [`Mesh`] (triangle list, `u32` indices).
     pub fn into_bevy_mesh(self) -> Mesh {
         let positions: Vec<[f32; 3]> = self.positions.iter().map(Vec3::to_array).collect();
@@ -157,5 +195,38 @@ mod tests {
                 None => assert_eq!((uv1[3], sway[3]), (Vec2::ONE, Vec4::ZERO)),
             }
         }
+    }
+
+    #[test]
+    fn flat_shading_gives_each_triangle_its_own_face_normal_and_keeps_the_attributes() {
+        // A quad folded along its diagonal: two triangles sharing two vertices, smooth normals.
+        let mesh = MeshData {
+            positions: vec![Vec3::ZERO, Vec3::X, Vec3::new(1.0, 1.0, 0.5), Vec3::Y],
+            normals: vec![Vec3::Z; 4],
+            uvs: (0..4).map(|i| Vec2::new(i as f32, 0.0)).collect(),
+            colors: (0..4).map(|i| Vec4::splat(i as f32)).collect(),
+            uv1: (0..4).map(|i| Vec2::new(0.0, i as f32)).collect(),
+            sway: (0..4).map(|i| Vec4::new(0.0, 0.0, i as f32, 1.0)).collect(),
+            indices: vec![0, 1, 2, 0, 2, 3],
+        };
+        let flat = mesh.flat_shaded();
+        assert_eq!(flat.positions.len(), 6);
+        assert_eq!(flat.indices, (0..6).collect::<Vec<u32>>());
+        for (k, tri) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
+            let [a, b, c] = tri.map(|i| mesh.positions[i as usize]);
+            let face = (b - a).cross(c - a).normalize();
+            for v in 3 * k..3 * k + 3 {
+                assert_eq!(flat.normals[v], face, "vertex {v}");
+                let from = tri[v - 3 * k] as usize;
+                assert_eq!(
+                    (flat.positions[v], flat.uvs[v], flat.colors[v], flat.uv1[v], flat.sway[v]),
+                    (mesh.positions[from], mesh.uvs[from], mesh.colors[from], mesh.uv1[from], mesh.sway[from])
+                );
+            }
+        }
+        assert_ne!(flat.normals[0], flat.normals[3], "the fold is a crease, not a smooth surface");
+        // A mesh without the optional attributes gains none.
+        let plain = triangle(None).flat_shaded();
+        assert!(plain.colors.is_empty() && plain.uv1.is_empty() && plain.sway.is_empty());
     }
 }

@@ -48,7 +48,7 @@ use bevy::time::Time;
 use crate::foliage::uses_scan;
 use crate::impostor::ImpostorSupport;
 use crate::mesh::ATTRIBUTE_LEAF_SWAY;
-use crate::params::{LeafStyle, RenderStyle, TreeParams};
+use crate::params::{CrownStyle, LeafStyle, RenderStyle, TreeParams};
 use crate::push::{PUSH_SLOT, PUSH_VECTORS, PushSlots};
 use crate::see_through::{SEE_THROUGH_SLOT, SEE_THROUGH_VECTORS, SeeThroughCapsule};
 
@@ -234,7 +234,7 @@ impl TreeShakes {
 /// every tree and lives in [`FloraWindBuffer`].
 #[derive(ShaderType, Reflect, Clone, Copy, Debug, PartialEq, Default)]
 pub struct FloraUniform {
-    /// (1 / trunk height, 0, 0, 0).
+    /// (1 / trunk height, 1 for a hull crown ([`CrownStyle::Hull`]) and 0 otherwise, 0, 0).
     pub tree: Vec4,
     /// (sway, flutter, sway frequency, flutter frequency) of the species: [`TreeParams::wind`].
     pub response: Vec4,
@@ -387,20 +387,27 @@ impl FloraUniform {
         // The veins are drawn on leaf-shaped cards; the other styles' UVs are not a leaf.
         let veined = !matches!(params.foliage.style, LeafStyle::NeedleCluster | LeafStyle::ClusterSphere);
         let tint = s.transmission_tint.to_linear();
+        let hull = matches!(params.crown, CrownStyle::Hull { .. });
         Self {
-            tree: Vec4::new(1.0 / params.trunk.height.max(0.01), 0.0, 0.0, 0.0),
+            tree: Vec4::new(1.0 / params.trunk.height.max(0.01), if hull { 1.0 } else { 0.0 }, 0.0, 0.0),
             response: Vec4::new(
                 r.sway.max(0.0),
                 r.flutter.max(0.0),
                 r.sway_frequency.max(0.0),
                 r.flutter_frequency.max(0.0),
             ),
-            leaf: Vec4::new(
-                s.translucency.max(0.0),
-                s.roughness.clamp(0.05, 1.0),
-                if veined { s.veins.clamp(0.0, 1.0) } else { 0.0 },
-                s.underside.clamp(0.0, 1.0),
-            ),
+            // A hull crown ([`CrownStyle::Hull`]) lets no light through, has no veins and no paler
+            // underside: its facets are matte (`tree.y`, which the shaders read as the hull flag).
+            leaf: if hull {
+                Vec4::new(0.0, s.roughness.clamp(0.05, 1.0), 0.0, 0.0)
+            } else {
+                Vec4::new(
+                    s.translucency.max(0.0),
+                    s.roughness.clamp(0.05, 1.0),
+                    if veined { s.veins.clamp(0.0, 1.0) } else { 0.0 },
+                    s.underside.clamp(0.0, 1.0),
+                )
+            },
             tint: Vec4::new(tint.red, tint.green, tint.blue, 0.0),
             bark: Vec4::ZERO,
             bark_mean: Vec4::ZERO,
@@ -413,7 +420,14 @@ impl FloraUniform {
     /// so changing how leaves are shaded does not touch the wood's material. The wood bends like
     /// the species does.
     pub(crate) fn wood(self) -> Self {
-        Self { leaf: Vec4::ZERO, tint: Vec4::ZERO, autumn: Vec4::ZERO, blossom: Vec4::ZERO, ..self }
+        Self {
+            leaf: Vec4::ZERO,
+            tint: Vec4::ZERO,
+            autumn: Vec4::ZERO,
+            blossom: Vec4::ZERO,
+            tree: self.tree.with_y(0.0),
+            ..self
+        }
     }
 }
 
@@ -1030,6 +1044,20 @@ mod tests {
         let wood = uniform.wood();
         assert_eq!((wood.tree, wood.response), (uniform.tree, uniform.response));
         assert_eq!((wood.leaf, wood.tint), (Vec4::ZERO, Vec4::ZERO));
+    }
+
+    #[test]
+    fn a_hull_crown_is_flagged_in_the_uniform_lets_no_light_through_and_wood_is_never_flagged() {
+        let leaves = FloraUniform::new(&TreePreset::Spruce.params());
+        assert_eq!(leaves.tree.y, 0.0, "leaf cards are not a hull");
+        assert!(leaves.leaf.x > 0.0, "a leaf is translucent");
+        let hull = FloraUniform::new(&crate::crown_hull::hull_spruce());
+        assert_eq!(hull.tree, Vec4::new(leaves.tree.x, 1.0, 0.0, 0.0), "the hull flag, and the same 1 / height");
+        assert_eq!((hull.leaf.x, hull.leaf.z, hull.leaf.w), (0.0, 0.0, 0.0), "no light through, no veins, no underside");
+        assert_eq!(hull.leaf.y, leaves.leaf.y, "the roughness is the species'");
+        assert_ne!(hull, leaves, "a hull's material is not a leaf card's");
+        // The wood of a hull tree is wood: it keeps its 1 / height for the wind and is no hull.
+        assert_eq!(hull.wood().tree, leaves.tree);
     }
 
     #[test]

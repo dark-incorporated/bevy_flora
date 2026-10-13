@@ -25,7 +25,7 @@ import package::shading::common::leaf_detail;
 import package::shading::common::{toon_lighting, toon_rim};
 
 @if(FLORA_LEAF)
-import package::shading::common::{leaf_surface, leaf_transmission, FRUIT_ROUGHNESS};
+import package::shading::common::{leaf_surface, hull_surface, leaf_transmission, FRUIT_ROUGHNESS, flora};
 
 import package::shading::common::{snow_on, snow_shelter, wet_on, facing_normal, LEAF_FROST};
 
@@ -85,7 +85,11 @@ fn fragment(
 
 @if(FLORA_LEAF)
     if !flower {
-        leaf_surface(&pbr_input, in.uv, in.uv_b);
+        if flora.tree.y > 0.5 {
+            hull_surface(&pbr_input, in.uv_b);
+        } else {
+            leaf_surface(&pbr_input, in.uv, in.uv_b);
+        }
     } else if fruit {
         pbr_input.material.perceptual_roughness = FRUIT_ROUGHNESS;
     }
@@ -143,10 +147,13 @@ fn fragment(
 @else
     out.color = apply_pbr_lighting(pbr_input);
 @if(FLORA_LEAF)
-    out.color = vec4<f32>(
-        out.color.rgb + view.exposure * leaf_transmission(pbr_input, in.uv_b.y, flower) * select(1.0 - snowed, 0.0, fruit),
-        out.color.a
-    );
+    // A hull crown's facets let no light through (`hull_surface`): only a leaf card does.
+    if flora.tree.y < 0.5 {
+        out.color = vec4<f32>(
+            out.color.rgb + view.exposure * leaf_transmission(pbr_input, in.uv_b.y, flower) * select(1.0 - snowed, 0.0, fruit),
+            out.color.a
+        );
+    }
 @if(FLORA_TOON)
     out.color = vec4<f32>(out.color.rgb * toon_rim(pbr_input.world_normal, pbr_input.V), out.color.a);
     // Embers and burning leaves give light of their own, after the toon rim, which would darken it.
