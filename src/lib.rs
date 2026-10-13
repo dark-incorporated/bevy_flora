@@ -367,6 +367,12 @@
 //! shadow maps and other cameras keep the whole trees. Nothing carries the fade while no camera
 //! has it.
 //!
+//! # Deadfall on the forest floor
+//!
+//! A pool built with [`build_pool_with_deadfall`] also holds each variant cut as [`FellTree`] and
+//! [`BuckTree`] would cut it, and a [`PooledDeadfall`] (a stump, a tree lying where it fell or
+//! bucked logs) is placed from it for the cost of a pooled tree; see [`deadfall`].
+//!
 //! # Walking through undergrowth
 //!
 //! A [`FoliagePusher`] on the player, an NPC or a cart pushes the leaves and thin stems it walks
@@ -386,6 +392,7 @@
 pub mod background;
 pub mod crown;
 pub mod crown_hull;
+pub mod deadfall;
 pub mod falling;
 pub mod felling;
 pub mod fire;
@@ -418,6 +425,7 @@ pub mod venation;
 
 pub use background::BuildInBackground;
 pub use crown::CrownShape;
+pub use deadfall::{Deadfall, DeadfallKind, DeadfallSettings, PoolLog, PooledDeadfall};
 pub use falling::{DropLeaves, FallingLeaves, LeafBurst};
 pub use felling::{BuckTree, FellTree, Felled, TreeBucked, TreeLanded, TreeLog, TreeNotch, TreeStump};
 pub use fire::{BURNT, Burnt, FireCell, FireSpread, FloraFire, TreeBurnt};
@@ -440,6 +448,7 @@ pub use pipeline::{TreeMeshes, build_tree};
 pub use plugin::{FloraPlugin, Growing, ProceduralTree, TreeAge, TreeGenerated, TreeMature, TreeRender};
 pub use pool::{
     LodScale, PoolColors, PoolMaterials, PoolVariant, PooledLook, PooledTree, RecolorPool, TreePool, build_pool,
+    build_pool_with_deadfall,
 };
 pub use recolor::RecolorTree;
 pub use presets::TreePreset;

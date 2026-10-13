@@ -227,6 +227,9 @@ pub struct PoolVariant {
     /// The variant's skeleton, at the pool's age: where its branches are, for gameplay (perches,
     /// fruit, nests) or a shape of your own.
     pub skeleton: Skeleton,
+    /// What the variant leaves when cut: its stump, its fallen tree and its logs. `None` unless the
+    /// pool was built with [`build_pool_with_deadfall`].
+    pub deadfall: Option<crate::deadfall::Deadfall>,
 }
 
 /// A tree placed from a [`TreePool`]. Static: it has the age the pool was built
@@ -299,17 +302,51 @@ pub fn build_pool(
     lod: &LodSettings,
     meshes: &mut Assets<Mesh>,
 ) -> TreePool {
+    build_pool_inner(params, variants, age, lod, None, meshes)
+}
+
+/// [`build_pool`] that also cuts every variant for [`PooledDeadfall`](crate::PooledDeadfall)s:
+/// the stump, the part that lies and the logs of a bucked tree, as `deadfall` says
+/// ([`DeadfallSettings`](crate::DeadfallSettings)). Costs a few more meshes a variant.
+///
+/// # Panics
+///
+/// As [`build_pool`].
+pub fn build_pool_with_deadfall(
+    params: &TreeParams,
+    variants: u32,
+    age: f32,
+    lod: &LodSettings,
+    deadfall: &crate::deadfall::DeadfallSettings,
+    meshes: &mut Assets<Mesh>,
+) -> TreePool {
+    build_pool_inner(params, variants, age, lod, Some(deadfall), meshes)
+}
+
+fn build_pool_inner(
+    params: &TreeParams,
+    variants: u32,
+    age: f32,
+    lod: &LodSettings,
+    deadfall: Option<&crate::deadfall::DeadfallSettings>,
+    meshes: &mut Assets<Mesh>,
+) -> TreePool {
     let built = build_variants(params, variants.max(1), age, lod);
     let mut add = |data: MeshData| meshes.add(data.into_bevy_mesh());
     let variants = built
         .into_iter()
-        .map(|lods| {
+        .enumerate()
+        .map(|(k, lods)| {
             assert!(
                 !lods[0].trunk.is_empty(),
                 "build_pool: a tree of age {age} has no wood yet, so there is nothing to draw"
             );
             let (height, radius) = reach(&lods[0]);
             let bounds = lods.each_ref().map(bounds_of);
+            let cut = deadfall.map(|settings| {
+                let variant_params = TreeParams { seed: params.seed.wrapping_add(k as i32), ..params.clone() };
+                crate::deadfall::build_deadfall(&variant_params, &lods, settings, &mut add)
+            });
             let [fine, middle, coarse] = lods;
             let wood = [add(fine.trunk), add(middle.trunk), add(coarse.trunk)];
             // A flowering tree's flowers go in its leaf mesh: a pooled tree's flowers are hidden
@@ -334,6 +371,7 @@ pub fn build_pool(
                 radius,
                 shape,
                 skeleton: fine.skeleton,
+                deadfall: cut,
             }
         })
         .collect();
@@ -795,13 +833,13 @@ pub(crate) fn sync_shadow_casting(
     quieted: Query<
         &Children,
         (
-            Or<(With<PooledTree>, With<ProceduralTree>)>,
+            Or<(With<PooledTree>, With<ProceduralTree>, With<crate::deadfall::PooledDeadfall>)>,
             With<NotShadowCaster>,
             Or<(Added<NotShadowCaster>, Changed<Children>)>,
         ),
     >,
     mut removed: RemovedComponents<NotShadowCaster>,
-    casting: Query<&Children, (Or<(With<PooledTree>, With<ProceduralTree>)>, Without<NotShadowCaster>)>,
+    casting: Query<&Children, (Or<(With<PooledTree>, With<ProceduralTree>, With<crate::deadfall::PooledDeadfall>)>, Without<NotShadowCaster>)>,
     meshes: Query<(Has<NotShadowCaster>, Has<MeshMaterial3d<ImpostorMaterial>>), With<Mesh3d>>,
 ) {
     for children in &quieted {

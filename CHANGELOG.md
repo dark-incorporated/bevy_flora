@@ -35,6 +35,25 @@ with the time of day, the weather or the map it is showing.
   logs are the same logs the same gap apart, a fire spreads the same number of cells a second, the
   default pusher covers the same share of a shrub, falling leaves fall for as long, and the bands
   scale. `FloraUnits` is in the crate root and the prelude.
+- **Pooled deadfall** (#56). `build_pool_with_deadfall(params, variants, age, lod, &DeadfallSettings,
+  meshes)` (`build_pool` is unchanged) also cuts every variant as `FellTree` and `BuckTree` would:
+  `PoolVariant::deadfall` holds the stump and its face (level 0), the wood above the cut at each
+  level and its face, up to 600 contact points and the cut's outline (for the rest angle of each
+  instance), and the logs. `DeadfallSettings { cut_height: 0.5, log_length: Some(2.0), min_radius:
+  0.08 }` is in metres. A `PooledDeadfall { pool, variant, kind }` (`DeadfallKind::Stump`,
+  `Lying { direction }`, `Bucked { direction }`) is placed from it: a `TreeStump` with shared wood and
+  the cut face; the lying part turned about the cut's hinge until its limbs reach the ground there
+  (`FloraGround` included, as `FellTree` does) with the variant's leaves, its levels of detail and
+  its `TreeShape`; or the stump and `TreeLog`s in a row from it, as `buck_trees` lays them. Its
+  wood and leaves are of the calm look (no sway), made once per pool. Deadfall is never in the
+  `FloraIndex`, shakes and sheds nothing, is fire fuel, and takes `NotShadowCaster` like a pooled
+  tree. `BuckTree` on a lying one makes it bucked in place. `felling` helpers it shares with
+  `buck_trees` (`lay_log`, `trunk_alone`, `hinge_point`, `rest_angle`) are `pub(crate)`.
+
+### Changed
+
+- **Breaking: `TreeStump::tree` is an `Option<Entity>`** (#56): `None` for the stump of a pooled
+  deadfall, which no tree was cut from.
 - **Hull crowns and prism trunks** (#49). `TreeParams::crown` (`CrownStyle`, default `Leaves`) can be
   `Hull { tiers, sides, lift, jitter }`: the leaf cards are not drawn and a faceted stack of cones
   is wrapped round the leaf cloud instead (`tiers * sides * 2` flat triangles), and

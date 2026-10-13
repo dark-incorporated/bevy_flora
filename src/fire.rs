@@ -539,7 +539,7 @@ pub(crate) fn fire_rebinds(rebind: Res<FireRebind>) -> bool {
 }
 
 /// A tree the fire finds fuel around: drawn on the CPU or from a pool.
-type AnyTree = Or<(With<ProceduralTree>, With<PooledTree>)>;
+type AnyTree = Or<(With<ProceduralTree>, With<PooledTree>, With<crate::deadfall::PooledDeadfall>)>;
 
 /// Step the fire by the time that passed, in steps of `STEP`, while it burns. The fuel is laid
 /// down from where the trees stand first, and again whenever the number of trees changed (counted

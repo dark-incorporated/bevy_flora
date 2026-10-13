@@ -292,6 +292,8 @@ impl bevy::app::Plugin for FloraPlugin {
                         .chain()
                         .run_if(resource_exists::<ImpostorSupport>),
                     spawn_pooled_trees.run_if(flora_decided),
+                    crate::deadfall::spawn_pooled_deadfall.run_if(flora_decided),
+                    crate::deadfall::buck_pooled_deadfall,
                     fill_pooled_shapes,
                     recolor_pools,
                     sync_pooled_looks,

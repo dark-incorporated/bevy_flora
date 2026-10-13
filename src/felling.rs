@@ -109,8 +109,9 @@ impl Felled {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Reflect)]
 #[reflect(Component)]
 pub struct TreeStump {
-    /// The tree that was cut from it.
-    pub tree: Entity,
+    /// The tree that was cut from it: `None` for a pooled stump ([`PooledDeadfall`](crate::PooledDeadfall)),
+    /// which no tree was cut from.
+    pub tree: Option<Entity>,
 }
 
 /// Sent the frame a felled tree first hits the ground: the moment for the crash, the dust and
@@ -294,7 +295,7 @@ const REST_LIMIT: f32 = 150.0 * std::f32::consts::PI / 180.0;
 /// The gap between bucked logs laid in a row, and between the first and the stump, metres (times
 /// [`FloraUnits`] in the world): enough that the row reads as separate logs, and their end grain
 /// shows between them.
-const LOG_GAP: f32 = 0.15;
+pub(crate) const LOG_GAP: f32 = 0.15;
 
 /// Start felling every tree with a [`FellTree`] that can be cut: turn a pooled tree into its
 /// `ProceduralTree`, move a tree off the GPU growth path, then cut (at its [`TreeNotch`]'s
@@ -383,7 +384,7 @@ pub(crate) fn start_felling(
 
         // The stump: the wood below the cut and its face, where the tree stands.
         let cut_wood = CutWood { params: Arc::new(painted.clone()), unlit, calm: false };
-        let stump = commands.spawn((*transform, Visibility::Inherited, TreeStump { tree: entity }, cut_wood)).id();
+        let stump = commands.spawn((*transform, Visibility::Inherited, TreeStump { tree: Some(entity) }, cut_wood)).id();
         let mut wood = commands.spawn((Mesh3d(meshes.add(below.kept.into_bevy_mesh())), ChildOf(stump)));
         paint_child(&mut wood, &paint, false);
         if !below.faces.is_empty() {
@@ -576,7 +577,7 @@ pub(crate) fn calm_params(params: &TreeParams) -> TreeParams {
 /// (at least 5 cm, at most half its trunk), or with `ground` above the ground on the uphill side
 /// of its trunk. `units` is the world units to a metre ([`FloraUnits`]): `height` and the 5 cm are
 /// metres, the tree's `transform` and the ground are the world's.
-fn saw_height(transform: &Transform, params: &TreeParams, ground: Option<&FloraGround>, height: f32, units: f32) -> f32 {
+pub(crate) fn saw_height(transform: &Transform, params: &TreeParams, ground: Option<&FloraGround>, height: f32, units: f32) -> f32 {
     let scale = transform.scale.y.max(1.0e-4);
     let uphill = ground.map_or(0.0, |ground| {
         let top = ground.top(transform.translation.xz(), params.base_radius() * scale);
@@ -740,16 +741,7 @@ pub(crate) fn buck_trees(
         // The trunk alone, as the tree had it: the same rings and bark.
         let skeleton = aged_skeleton(&render.full, params, age.map_or(f32::INFINITY, |age| age.0));
         let node = &skeleton.nodes[0];
-        let mut trunk_params = params.trunk.clone();
-        let prism = prism_sides(params);
-        if let Some(sides) = prism {
-            trunk_params.radial_segments = sides;
-        }
-        let pieces = trunk_pieces(&trunk_params, node);
-        let mut trunk = trunk_mesh_with(&trunk_params, node, params.seed, pieces, bark_tile(params));
-        if prism.is_some() {
-            trunk = trunk.flat_shaded();
-        }
+        let trunk = trunk_alone(params, node);
         let top = trunk.positions.iter().map(|p| p.y).fold(0.0, f32::max);
         let unlit = colors.is_some_and(|colors| colors.0.unlit);
         let face = cut_face.get(&mut textures, &mut materials, unlit);
@@ -779,15 +771,7 @@ pub(crate) fn buck_trees(
                 break;
             }
             // Its ends on the ground, a log's length apart along it.
-            let (g0, lift0) = rest(at);
-            let rise = rest(at + along * length).0 - g0;
-            let far = at + along * (length * length / (length * length + rise * rise).sqrt());
-            let (g1, lift1) = rest(far);
-            let e0 = Vec3::new(at.x, g0 + r0 * scale * lift0, at.y);
-            let e1 = Vec3::new(far.x, g1 + r1 * scale * lift1, far.y);
-            let axis = (fall.base.rotation * (c1 - c0)).normalize_or(Vec3::Y);
-            let rotation = Quat::from_rotation_arc(axis, (e1 - e0).normalize_or(axis)) * fall.base.rotation;
-            let place = Transform { translation: e0 - rotation * (c0 * scale), rotation, scale: fall.base.scale };
+            let place = lay_log(&fall.base, at, along, length, (c0, r0), (c1, r1), rest);
 
             let capsule = WoodCapsule { a: c0, b: c1, radius: r0 };
             let log = commands
@@ -820,10 +804,49 @@ pub(crate) fn buck_trees(
     }
 }
 
+/// A tree's trunk node alone, as the tree has it: the same rings, wobble and bark, flat-shaded
+/// for a prism trunk (no collars, branches or leaves).
+pub(crate) fn trunk_alone(params: &TreeParams, node: &crate::skeleton::Node) -> MeshData {
+    let mut trunk_params = params.trunk.clone();
+    let prism = prism_sides(params);
+    if let Some(sides) = prism {
+        trunk_params.radial_segments = sides;
+    }
+    let pieces = trunk_pieces(&trunk_params, node);
+    let trunk = trunk_mesh_with(&trunk_params, node, params.seed, pieces, bark_tile(params));
+    if prism.is_some() { trunk.flat_shaded() } else { trunk }
+}
+
+/// Where a log of a tree standing as `base` (its own space: butt end centre and radius `(c0, r0)`,
+/// top end `(c1, r1)`) lies on the ground: its butt end on the ground at `at` (world x, z), a
+/// `length` (world metres) along `along` to its top end. `rest(p)` is the ground's height at `p`
+/// and how much higher than a log's radius its axis lies there (1 on flat ground). The transform
+/// of the log's entity.
+pub(crate) fn lay_log(
+    base: &Transform,
+    at: Vec2,
+    along: Vec2,
+    length: f32,
+    (c0, r0): (Vec3, f32),
+    (c1, r1): (Vec3, f32),
+    rest: impl Fn(Vec2) -> (f32, f32),
+) -> Transform {
+    let scale = base.scale.y.max(1.0e-4);
+    let (g0, lift0) = rest(at);
+    let rise = rest(at + along * length).0 - g0;
+    let far = at + along * (length * length / (length * length + rise * rise).sqrt());
+    let (g1, lift1) = rest(far);
+    let e0 = Vec3::new(at.x, g0 + r0 * scale * lift0, at.y);
+    let e1 = Vec3::new(far.x, g1 + r1 * scale * lift1, far.y);
+    let axis = (base.rotation * (c1 - c0)).normalize_or(Vec3::Y);
+    let rotation = Quat::from_rotation_arc(axis, (e1 - e0).normalize_or(axis)) * base.rotation;
+    Transform { translation: e0 - rotation * (c0 * scale), rotation, scale: base.scale }
+}
+
 /// The centre of a log's end and the radius it rests on (the trunk's outline at a cut: its
 /// centre, and its mean radius to the middle of its sides, so a polygonal log neither floats
 /// on its corners nor sinks by more than them).
-fn log_end(outlines: &[Vec<Vec3>]) -> Option<(Vec3, f32)> {
+pub(crate) fn log_end(outlines: &[Vec<Vec3>]) -> Option<(Vec3, f32)> {
     let outline = outlines.iter().max_by_key(|o| o.len()).filter(|o| o.len() >= 3)?;
     // Only its corners: a flat-shaded trunk's cut has a point in the middle of each side too (where
     // the cut crosses the diagonal of the side's two triangles), which would pull the mean in.
@@ -843,7 +866,7 @@ fn log_end(outlines: &[Vec<Vec3>]) -> Option<(Vec3, f32)> {
 }
 
 /// `direction` (world x, z) in the tree's own horizontal plane, unit length.
-fn fall_direction(transform: &Transform, direction: Vec2) -> Vec3 {
+pub(crate) fn fall_direction(transform: &Transform, direction: Vec2) -> Vec3 {
     let world = Vec3::new(direction.x, 0.0, direction.y).normalize_or(Vec3::X);
     let local = transform.rotation.inverse() * world;
     Vec3::new(local.x, 0.0, local.z).normalize_or(Vec3::X)
@@ -851,7 +874,7 @@ fn fall_direction(transform: &Transform, direction: Vec2) -> Vec3 {
 
 /// The front edge of the cut toward `direction`, which a falling tree turns about (the hinge
 /// wood of a real felling cut), and how far it is from the trunk's centre.
-fn hinge_point(outlines: &[Vec<Vec3>], cut_y: f32, direction: Vec3) -> (Vec3, f32) {
+pub(crate) fn hinge_point(outlines: &[Vec<Vec3>], cut_y: f32, direction: Vec3) -> (Vec3, f32) {
     // The trunk's outline is the one that encloses the most (a limb the cut crosses lengthwise has
     // more points, as a flat-shaded trunk has few, but encloses little).
     let area = |o: &Vec<Vec3>| {
@@ -871,7 +894,7 @@ fn hinge_point(outlines: &[Vec<Vec3>], cut_y: f32, direction: Vec3) -> (Vec3, f3
 /// all along (sampled from `skeleton`), and the vertices of limbs at least [`CONTACT_SHARE`] as
 /// thick as the trunk at the cut and [`CONTACT_RADIUS`] (`uv1.x` is a wood vertex's radius,
 /// `trunk_radius` the trunk's at the cut, both in the tree's own units).
-fn contact_points(wood: &MeshData, skeleton: &Skeleton, params: &TreeParams, cut_y: f32, trunk_radius: f32) -> Vec<Vec3> {
+pub(crate) fn contact_points(wood: &MeshData, skeleton: &Skeleton, params: &TreeParams, cut_y: f32, trunk_radius: f32) -> Vec<Vec3> {
     let least = (trunk_radius * CONTACT_SHARE).max(CONTACT_RADIUS);
     let mut points: Vec<Vec3> =
         wood.positions.iter().zip(&wood.uv1).filter(|(_, uv1)| uv1.x >= least).map(|(p, _)| *p).collect();
@@ -902,7 +925,7 @@ fn contact_points(wood: &MeshData, skeleton: &Skeleton, params: &TreeParams, cut
 /// reaches the ground, and that point; [`REST_LIMIT`] if none does. `clearance(p)` is how far
 /// `p` (in the tree's space) stands above the ground; points already below it before the fall
 /// (a limb low on the uphill side of a slope) are left out, as they would plough through.
-fn rest_angle(points: &[Vec3], hinge: Vec3, axis: Vec3, clearance: impl Fn(Vec3) -> f32) -> (f32, Vec3) {
+pub(crate) fn rest_angle(points: &[Vec3], hinge: Vec3, axis: Vec3, clearance: impl Fn(Vec3) -> f32) -> (f32, Vec3) {
     let points: Vec<Vec3> = points.iter().copied().filter(|p| clearance(*p) >= 0.0).collect();
     let lowest = |angle: f32, stride: usize| {
         let turn = Quat::from_axis_angle(axis, angle);
@@ -1128,7 +1151,7 @@ mod tests {
         let up = app.world().get::<Transform>(tree).unwrap().rotation * Vec3::Y;
         assert!(up.z > 0.6 && up.y < 0.6, "it fell along {up}, not toward +z");
         let stump = app.world().get::<TreeStump>(felled.stump).expect("no stump");
-        assert_eq!(stump.tree, tree);
+        assert_eq!(stump.tree, Some(tree));
         assert_eq!(app.world().get::<Transform>(felled.stump).unwrap().translation, Vec3::new(3.0, 0.0, -2.0));
         let pieces = app.world().get::<Children>(felled.stump).map_or(0, |c| c.len());
         assert_eq!(pieces, 2, "the stump should be its wood and its cut face");
