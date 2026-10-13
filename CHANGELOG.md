@@ -11,6 +11,9 @@ Worlds that are not in metres (#50) and a see-through fade that can match the on
 its own meshes (#52). The first adds API only; the second adds fields to a public struct and
 changes a dither pattern, noted below.
 
+Colour looks for pools, and recolouring at runtime (issue #54), for a game whose palette changes
+with the time of day, the weather or the map it is showing.
+
 ### Added
 
 - **`FloraUnits { units_per_metre }`** (#50), a resource (default 1.0: a world in metres, nothing
@@ -51,6 +54,35 @@ changes a dither pattern, noted below.
   untouched), and a test reads `common.wesl`'s slot constants against the Rust ones. `forest
   --see-through` takes the new fields (`<x,y,z>,<radius>,<in_front>,<keep>,<above_feet>,<inner>`)
   and `forest --ortho <view height>` gives the camera an orthographic projection.
+- **Looks of a pool** (`PoolColors { wood, leaves, unlit }`, `TreePool::looks`,
+  `TreePool::add_look`, `PooledLook`): a pool is drawn in look 0, the colours of its parameters, or
+  in any look added to it before it goes into the assets; a `PooledTree` picks one with
+  `PooledLook(n)` (absent is 0, taken modulo the looks; changing it re-dresses the tree's children
+  and nothing else). Every look shares the pool's meshes: three looks of one forest draw the same
+  meshes with three pairs of materials. A look is made as the pool's own is: scans keep their
+  pattern with their average colour divided out, autumn and blossom colours stay the same ratio of
+  the leaf colour away.
+- **`RecolorPool { pool, look, colors }`** (a message): rewrites the pool's materials and the
+  look's impostor materials in place, writing only what changed, and never takes the pool asset
+  mutably, so no tree is re-indexed or rebuilt (a palette that glides through the day costs a few
+  material writes a frame). A pool that was not drawn yet takes the colours when it first is.
+- **`RecolorTree { tree, colors }`** (a message): the same for a tree that is not pooled, or no
+  longer is: a `ProceduralTree` (every level of a `TreeLod` tree), its cut faces and, when it is
+  felled, its stump; or a `TreeStump` or `TreeLog` on its own (a bucked tree's stump and logs are
+  separate entities). Materials are swapped for the shared ones of the new colours, no mesh is
+  rebuilt, and the tree keeps the colours through later rebuilds. A felled tree lying on the ground
+  keeps its materials that do not sway. A `GpuGrowth` tree takes its colours from its parameters.
+- **`PoolColors::unlit`**: the surface is drawn as its colour alone (after the rain, the snow and
+  the fire have had their say with it): no lighting, no shadows received, no light through the
+  leaves, no toon rim. The wood, leaves, impostors and cut faces of the look all do it
+  (`StandardMaterial::unlit` on the base, `STANDARD_MATERIAL_FLAGS_UNLIT_BIT` in `fragment.wesl`
+  and `impostor.wesl`); an unlit look is a different `SharedFlora` material from a lit one of the
+  same colours.
+- **`TreePool::tree_params_for(variant, look)`**: the variant's parameters painted in a look's
+  colours. A pooled tree that is felled or notched becomes the `ProceduralTree` of its variant *in
+  its look* (and in the colours a `RecolorPool` has since given it), unlit included.
+- **`ImpostorTint`**, and `forest --looks [--recolor]`: three looks of one forest in three bands,
+  and a recolour of two of them mid-run.
 
 ### Changed
 
@@ -63,6 +95,16 @@ changes a dither pattern, noted below.
 - **The shared buffer's layout**: the fade takes four slots (23 to 26: the camera and radius, the
   target, the shape and a spare), so the pushers' slots begin at 27 and the fire's at 60
   (`WIND_VECTORS` 60). Nothing public reads them; a game that read the buffer itself must move.
+- **`TreePool::materials` is a `Vec<PoolMaterials>`, one pair per look** (was an `Option`: empty
+  where it was `None`). `TreePool` has a new public field, `looks`, which `build_pool` fills with
+  look 0.
+- **`ImpostorAtlas::material` is `ImpostorAtlas::materials`**, one `Handle<ImpostorMaterial>` per
+  look, sharing the albedo and surface images. `ImpostorMaterial::new` takes the look's
+  `ImpostorTint` and whether it is unlit after `wind`, and `ImpostorMaterial` has a `tint` field at
+  binding 4.
+- **Impostors are baked neutral grey** (linear 0.5, wood and leaves alike) and the shader
+  multiplies in twice the look's linear colour where the picture holds wood or leaves, before the
+  season recolours the leaves: a look needs no new bake, and look 0 draws the pool's colours.
 
 ## [0.35.0] - 2026-10-13
 

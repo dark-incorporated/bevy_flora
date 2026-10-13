@@ -36,6 +36,7 @@ struct Look {
     leaf_scan: Option<LeafScan>,
     venation: bool,
     style: RenderStyle,
+    unlit: bool,
 }
 
 fn bits(v: Vec4) -> [u32; 4] {
@@ -60,6 +61,7 @@ impl Look {
             leaf_scan: surface.leaf_scan.as_ref().map(|scan| scan.scan),
             venation: surface.venation.is_some(),
             style: surface.style,
+            unlit: surface.unlit,
         }
     }
 }

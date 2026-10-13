@@ -233,9 +233,41 @@ Measured for 0.6.1 with `cargo run --release --example forest -- --offscreen` (1
 
 Bark (0.7.0) and leaf scans (0.8.0) leave these figures where they were, within what could be measured: the machine these were taken on has been loaded by other builds since, so the table above was not re-measured, and the releases were compared by interleaved runs instead (see the `CHANGELOG`). In those, 100 000 pooled oaks cost no more in 0.8.0 than in 0.7.0 (0.6.2 and 0.7.0 took 7.41 and 7.45 ms), and a thousand individual `ProceduralTree` oaks cost 4 to 10% more, because a leaf card cut to a real outline has more vertices than the old fan. The looks of 0.9.0 do not move them: the natural look draws the same pixels as 0.8.0 with the same shaders, and in interleaved runs 100 000 pooled oaks took 12 to 16 ms in all three looks on a machine under load, a thousand individual ones 31 to 48. Seasons (0.11.0) add under 1%: 100 000 pooled oaks took 7.33 ms in 0.10.0 and 7.40 in 0.11.0, a thousand individual oaks 23.4 and 23.6 ms (medians of three interleaved runs on a quiet machine), and half-bare trees are cheaper (22.1 ms).
 
-The pool's trees are static: they have the age the pool was built at, and growing trees stay `ProceduralTree` (with `GpuGrowth`), which suits the few that are close. Impostors are baked once per variant by a few frames of offscreen rendering, so a tree appears when that is done, and they need `FloraPlugin` added after `DefaultPlugins` (before it, with no renderer, or on a device without storage buffers in the vertex stage such as WebGL2, the coarsest level is drawn at every distance and one warning says so). They are baked unlit, as a colour and a surface picture, and shaded by the scene's own lights every frame: they follow the time of day, glow with the sun behind them and sway with the wind. They cast no shadows, and they show one of eight views, at one elevation. With MSAA an impostor keeps the gaps of its crown: each pixel draws the share of its samples the baked tree covers, so a far crown is as airy, and as light, as the leaves it stands for. Level 2 and the impostors replace thin twigs and most leaves, so a forest seen from above or close up should keep its near trees at level 0.
+The pool's trees are static: they have the age the pool was built at, and growing trees stay `ProceduralTree` (with `GpuGrowth`), which suits the few that are close. Impostors are baked once per variant by a few frames of offscreen rendering, so a tree appears when that is done, and they need `FloraPlugin` added after `DefaultPlugins` (before it, with no renderer, or on a device without storage buffers in the vertex stage such as WebGL2, the coarsest level is drawn at every distance and one warning says so). They are baked unlit, as a neutral grey colour picture (a pool's looks tint it, below) and a surface picture, and shaded by the scene's own lights every frame: they follow the time of day, glow with the sun behind them and sway with the wind. They cast no shadows, and they show one of eight views, at one elevation. With MSAA an impostor keeps the gaps of its crown: each pixel draws the share of its samples the baked tree covers, so a far crown is as airy, and as light, as the leaves it stands for. Level 2 and the impostors replace thin twigs and most leaves, so a forest seen from above or close up should keep its near trees at level 0.
 
 Shadows are a large part of a forest's cost: every shadow cascade draws every tree that casts into it. Put `NotShadowCaster` on a `PooledTree` (or a `ProceduralTree`) and none of what draws it casts; take it off and it casts again, so a game can keep the shadow maps to the trees near the player, re-marking them as the player moves. `forest --shadow-radius 150` lets only the trees within 150 m of the camera cast: 1 000 individual oaks take 20.3 ms a frame instead of 24.6, 100 000 pooled oaks 7.2-7.3 ms instead of 7.5 (0.35.0, Apple M4 Pro, `--offscreen --deterministic`).
+
+#### One forest, many looks: `PoolColors`
+
+A pool can be drawn in more than one colouring without a second set of meshes. `TreePool::looks` starts with look 0, the colours of the parameters; `add_look` adds more (before the pool goes into the assets), and a `PooledTree` picks one with `PooledLook(n)`. Three looks of one forest draw the same meshes with three pairs of materials, impostors included: they are baked neutral grey and take a look's colours as a tint. A look can be `unlit`: its wood, leaves, impostors and cut faces then show their colour as it is, with no lighting, shadows or light through the leaves (the rain, the snow and the fire still mark it), for a map, a diagram or a dream. `RecolorPool` changes a look's colours at runtime, every tree in it at once, by writing the pool's materials in place where a value changed (the pool asset is never touched, no mesh is rebuilt, so a palette that glides through the day costs a few material writes a frame); scans keep their pattern and the autumn and blossom colours follow the new leaf colour. A pooled tree that is felled keeps its look (`TreePool::tree_params_for`), and `RecolorTree` recolours it, its stump, its cut faces and its logs afterwards.
+
+```rust,no_run
+use bevy::prelude::*;
+use bevy_flora::prelude::*;
+
+fn looks(
+    mut commands: Commands,
+    mut pools: ResMut<Assets<TreePool>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) -> Handle<TreePool> {
+    let mut pool = build_pool(&TreePreset::Oak.params(), 8, f32::INFINITY, &LodSettings::default(), &mut meshes);
+    // Look 0 is the oak's own colours; the others are added before the pool goes into the assets.
+    let dusk = pool.add_look(PoolColors { wood: Color::srgb(0.20, 0.10, 0.10), leaves: Color::srgb(0.40, 0.15, 0.30), unlit: false });
+    let map = pool.add_look(PoolColors { wood: Color::BLACK, leaves: Color::srgb(0.10, 0.80, 0.40), unlit: true });
+    let pool = pools.add(pool);
+    commands.spawn((PooledTree { pool: pool.clone(), variant: 3 }, PooledLook(dusk)));
+    commands.spawn((PooledTree { pool: pool.clone(), variant: 4 }, PooledLook(map)));
+    pool
+}
+
+// Later: dawn. Every tree in look 1 follows, and so does every impostor of it.
+fn dawn(pool: &Handle<TreePool>, mut recolor: MessageWriter<RecolorPool>) {
+    let colors = PoolColors { wood: Color::srgb(0.35, 0.22, 0.12), leaves: Color::srgb(0.55, 0.60, 0.25), unlit: false };
+    recolor.write(RecolorPool { pool: pool.id(), look: 1, colors });
+}
+```
+
+`forest --looks` draws a forest in three looks side by side (the oak's own, a lit autumn one, a flat unlit one), and `--looks --recolor` recolours two of them after the warmup.
 
 ### Planting a forest: `Scatter`
 

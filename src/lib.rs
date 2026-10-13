@@ -394,6 +394,7 @@ pub mod plugin;
 pub mod pool;
 pub mod presets;
 pub mod push;
+pub mod recolor;
 pub mod rng;
 pub mod scatter;
 pub mod see_through;
@@ -416,7 +417,7 @@ pub use ground::FloraGround;
 pub use growth::GrowthParams;
 pub use harvest::{FallenFruit, FallingFruit, Fruit, FruitFell, TreeFruit};
 pub use index::{FloraIndex, IndexedTree, TreeHit};
-pub use impostor::{IMPOSTOR_VIEWS, ImpostorAtlas, ImpostorMaterial};
+pub use impostor::{IMPOSTOR_VIEWS, ImpostorAtlas, ImpostorMaterial, ImpostorTint};
 pub use lod::{LodDistances, LodSettings, TreeLod, build_lods};
 pub use mesh::MeshData;
 pub use params::{
@@ -426,7 +427,8 @@ pub use params::{
 };
 pub use pipeline::{TreeMeshes, build_tree};
 pub use plugin::{FloraPlugin, Growing, ProceduralTree, TreeAge, TreeGenerated, TreeMature, TreeRender};
-pub use pool::{PoolMaterials, PoolVariant, PooledTree, TreePool, build_pool};
+pub use pool::{PoolColors, PoolMaterials, PoolVariant, PooledLook, PooledTree, RecolorPool, TreePool, build_pool};
+pub use recolor::RecolorTree;
 pub use presets::TreePreset;
 pub use rng::SeededRng;
 pub use scatter::{Scatter, ScatterPoint, poisson_disc};
@@ -453,7 +455,8 @@ pub mod prelude {
         FloraGround, FloraIndex, FloraPlugin, FloraSeason, FloraUnits, FloraWetness, FloraWind, FoliageParams, FoliagePusher,
         Burnt, FallenFruit, FallingFruit, FruitFell, FruitParams, TreeBurnt, TreeFruit,
         GpuGrowth, Growing, GustFront,
-        LeafBurst, LeafScan, LodDistances, LodSettings, PooledTree, ProceduralTree, ProceduralTreeAsset, RenderStyle,
+        LeafBurst, LeafScan, LodDistances, LodSettings, PoolColors, PooledLook, PooledTree, ProceduralTree,
+        ProceduralTreeAsset, RecolorPool, RecolorTree, RenderStyle,
         Scatter, ScatterPoint, SeeThroughTrees, TreeAge, TreeBucked, TreeGenerated, TreeLanded, TreeLod, TreeLog,
         TreeMature, TreeNotch, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes, TreeShape, TreeStump,
         WindResponse, WoodCapsule, build_pool,

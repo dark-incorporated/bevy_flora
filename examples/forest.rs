@@ -13,7 +13,7 @@
 //!     [--undergrowth <preset>[:<spacing>]] [--terrain <relief>] [--background] [--tree-lod] [--shadow-radius <m>]
 //!     [--see-through <x,y,z>[,<radius>[,<in_front>[,<keep>[,<above_feet>[,<inner>]]]]]] [--ortho <view height>]
 //!     [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>]
-//!     [--push <x,z>]
+//!     [--push <x,z>] [--looks [--recolor]]
 //! ```
 //!
 //! Trees stand on a square grid with a deterministic jitter and a random yaw, or, with
@@ -62,7 +62,12 @@
 //! for having one before anything burns. `--push <x>,<z>` stands a body with a `FoliagePusher`
 //! there (no mesh): every flora shader then carries the push. `--shadow-radius <m>` lets only the
 //! trees within `m` metres of the camera cast shadows (the others get `NotShadowCaster`), as a game
-//! keeps the shadow maps to the trees near the player.
+//! keeps the shadow maps to the trees near the player. `--looks` (pool mode) gives every pool two
+//! looks beyond its own (`TreePool::add_look`: a lit autumn one, and a flat unlit one in two other
+//! colours) and stands the forest in three bands along x, one in each (`PooledLook`): the meshes
+//! are the same, the impostors take the colours as a tint. `--recolor` then, after the warmup,
+//! changes the colours of looks 1 and 2 (`RecolorPool`) and stands another warmup in them, so a
+//! `--screenshot` shows the forest after a recolour.
 //!
 //! `--terrain <relief>` replaces the flat ground with rolling hills about `relief` metres high
 //! (a heightfield mesh) and makes them the `FloraGround`: every tree and shrub stands at its
@@ -108,8 +113,9 @@ use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy_flora::{
     BuildInBackground, FloraFire, FloraGround, FloraPlugin, FloraSeason, FloraWetness, FloraWind, FoliagePusher,
     GpuGrowth, Growing,
-    GustFront, LodDistances, LodSettings, PooledTree, ProceduralTree, RenderStyle, Scatter, SeededRng, SeeThroughTrees,
-    TreeAge, TreeLod, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes, build_pool,
+    GustFront, LodDistances, LodSettings, PoolColors, PooledLook, PooledTree, ProceduralTree, RecolorPool, RenderStyle,
+    Scatter, SeededRng, SeeThroughTrees, TreeAge, TreeLod, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes,
+    build_pool,
 };
 
 const WINDOW: UVec2 = UVec2::new(1920, 1080);
@@ -122,6 +128,27 @@ const CAMERA_HEIGHT: f32 = 30.0;
 const UNDERGROWTH_LOD_SCALE: f32 = 0.5;
 /// With `--terrain`, no tree or shrub stands on ground steeper than this, in degrees.
 const MAX_SLOPE_DEGREES: f32 = 30.0;
+/// `--looks`: the colours of looks 1 and 2 (the pools' own look is 0), and what `--recolor`
+/// changes them to: a lit autumn look and a flat, unlit one.
+const LOOKS: [(PoolColors, PoolColors); 2] = [
+    (
+        PoolColors { wood: Color::srgb(0.38, 0.17, 0.08), leaves: Color::srgb(0.85, 0.22, 0.08), unlit: false },
+        PoolColors { wood: Color::srgb(0.25, 0.10, 0.30), leaves: Color::srgb(0.55, 0.15, 0.75), unlit: false },
+    ),
+    (
+        PoolColors { wood: Color::srgb(0.12, 0.10, 0.40), leaves: Color::srgb(0.30, 0.90, 0.80), unlit: true },
+        PoolColors { wood: Color::srgb(0.55, 0.40, 0.08), leaves: Color::srgb(1.00, 0.85, 0.15), unlit: true },
+    ),
+];
+
+/// The look of a tree at `x`: with `--looks` the forest's three bands along x (`extent` wide, centred),
+/// else look 0.
+fn look_at(x: f32, extent: f32, looks: bool) -> u32 {
+    if !looks {
+        return 0;
+    }
+    (((x / extent.max(1.0) + 0.5) * 3.0).floor() as i32).clamp(0, 2) as u32
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Mode {
@@ -241,6 +268,10 @@ struct Args {
     ortho: Option<f32>,
     /// The camera's prepasses: 0 none, 1 depth, 2 depth, normal and motion vectors.
     prepass: u8,
+    /// The pools get two more looks and the forest stands in three bands along x, one in each.
+    looks: bool,
+    /// With `--looks`: after the warmup, looks 1 and 2 change colour (`RecolorPool`).
+    recolor: bool,
 }
 
 impl Args {
@@ -262,7 +293,8 @@ fn usage() -> ! {
          [--scatter <preset[:weight]>,... [--grove <m>] [--clearing <m>] [--stand <x,z,radius>]] \
          [--undergrowth <preset>[:<spacing>]] [--terrain <relief>] [--background] [--tree-lod] [--shadow-radius <m>] \
          [--see-through <x,y,z>[,<radius>[,<in_front>[,<keep>[,<above_feet>[,<inner>]]]]]] [--ortho <view height>] \
-         [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>] [--push <x,z>]"
+         [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>] [--push <x,z>] \
+         [--looks [--recolor]]"
     );
     std::process::exit(2);
 }
@@ -309,6 +341,8 @@ fn parse_args() -> Args {
         see_through_shape: (0.0, 0.0, 0.0, 0.7),
         ortho: None,
         prepass: 0,
+        looks: false,
+        recolor: false,
     };
     let mut it = std::env::args().skip(1);
     fn value<T: std::str::FromStr>(it: &mut impl Iterator<Item = String>) -> T {
@@ -487,6 +521,8 @@ fn parse_args() -> Args {
                 let parts: Vec<f32> = list.split(',').filter_map(|p| p.parse().ok()).collect();
                 args.lod = Some(parts.try_into().unwrap_or_else(|_| usage()));
             }
+            "--looks" => args.looks = true,
+            "--recolor" => args.recolor = true,
             "--screenshot" => args.screenshot = Some(it.next().unwrap_or_else(|| usage()).into()),
             _ => usage(),
         }
@@ -530,6 +566,8 @@ struct Bench {
     extent: f32,
     /// How many trees were placed.
     placed: u32,
+    /// `--recolor` has been done.
+    recolored: bool,
 }
 
 /// Marks a tree the benchmark spawned.
@@ -593,6 +631,7 @@ fn main() {
             target: Handle::default(),
             extent: 0.0,
             placed: 0,
+            recolored: false,
         })
         .add_systems(Startup, setup)
         .add_systems(Update, drive);
@@ -775,7 +814,16 @@ fn setup(
         let built: Vec<_> = bases
             .iter()
             .zip(&lods)
-            .map(|(base, lod)| pools.add(build_pool(base, VARIANTS, f32::INFINITY, lod, &mut meshes)))
+            .map(|(base, lod)| {
+                let mut pool = build_pool(base, VARIANTS, f32::INFINITY, lod, &mut meshes);
+                if bench.args.looks {
+                    // Looks 1 and 2 after the pool's own look 0.
+                    for (colors, _) in &LOOKS {
+                        pool.add_look(*colors);
+                    }
+                }
+                pools.add(pool)
+            })
             .collect();
         eprintln!(
             "forest: built {} pool(s) of {VARIANTS} variants in {:.2} s",
@@ -793,7 +841,8 @@ fn setup(
         // `--shadow-radius`: the trees farther from the camera cast no shadow.
         let quiet = bench.args.shadow_radius.is_some_and(|r| transform.translation.xz().distance(view.translation.xz()) > r);
         if let Some(pool) = pools.get(species) {
-            let mut tree = commands.spawn((PooledTree { pool: pool.clone(), variant }, transform, ForestTree));
+            let look = PooledLook(look_at(transform.translation.x, bench.extent, bench.args.looks));
+            let mut tree = commands.spawn((PooledTree { pool: pool.clone(), variant }, look, transform, ForestTree));
             if quiet {
                 tree.insert(NotShadowCaster);
             }
@@ -1005,6 +1054,7 @@ fn drive(
     screenshots: Query<(), With<Screenshot>>,
     pools: Res<Assets<TreePool>>,
     mut exit: MessageWriter<AppExit>,
+    mut recolor: MessageWriter<RecolorPool>,
     mut wind: ResMut<FloraWind>,
     time: Res<Time>,
     mut shakes: ResMut<TreeShakes>,
@@ -1061,6 +1111,20 @@ fn drive(
                 bench.loaded.elapsed() < bench.args.warmup
             };
             if warm {
+                return;
+            }
+            // `--recolor`: once the forest has stood a while, two of its looks change colour (the
+            // pool is not touched, no tree rebuilt), and it stands another warmup in them.
+            if bench.args.recolor && !bench.recolored {
+                bench.recolored = true;
+                for (id, _) in pools.iter() {
+                    for (look, (_, colors)) in LOOKS.iter().enumerate() {
+                        recolor.write(RecolorPool { pool: id, look: look as u32 + 1, colors: *colors });
+                    }
+                }
+                eprintln!("forest: recoloured looks 1 and 2");
+                bench.warm_frames = 0;
+                bench.loaded = Instant::now();
                 return;
             }
             // Trees wait for their impostors, so a pool without them here means the

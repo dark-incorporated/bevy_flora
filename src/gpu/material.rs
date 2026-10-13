@@ -87,7 +87,7 @@ pub(crate) fn growth_material(
 ) -> GrowthMaterial {
     let (detail_color, detail_normal) = surface.detail();
     GrowthMaterial {
-        base: flora_base(surface.color),
+        base: flora_base(surface.color, surface.unlit),
         extension: GrowthExtension {
             nodes: nodes.clone(),
             flora: surface.uniform,
