@@ -5,6 +5,35 @@ All notable changes to `bevy_flora`. The format follows
 [Semantic Versioning](https://semver.org/). Before 1.0, a minor version bump
 (`0.x`) may break the API.
 
+## [Unreleased]
+
+Worlds that are not in metres (#50). New API only.
+
+### Added
+
+- **`FloraUnits { units_per_metre }`** (#50), a resource (default 1.0: a world in metres, nothing
+  changes) for a game whose world unit is not the metre: its trees are built in metres and placed
+  with a `Transform` scale of about 3.28 in a world in feet, and everything the crate measures in
+  the world itself now follows the unit. The rule, written on every field it touches: a field
+  that sizes or times the crate's own simulation is in **metres**, multiplied by `units_per_metre`
+  where it meets the world (`FellTree::cut_height`, `TreeNotch::height`, `BuckTree`,
+  `FireSpread::speed` and `reach`, `FoliagePusher::radius` and `height`, `SeeThroughTrees::radius`,
+  `TreeShake::radius`, `GustFront::speed` and `width`, `LodDistances`,
+  `FallingLeaves::autumn_distance`, and the crate's own constants: gravity for felled trees and
+  fallen fruit, the saw's and the notch's 5 cm margins, the bucked logs' gap, how fast falling
+  leaves fall and drift, the pushers' rooting height and the 2 m cross-fade between levels of
+  detail); a position, or a size that addresses the world, is in **world units** (every `at`,
+  `target`, `centre`, `origin` and `feet`; `FloraFire::new`'s size and the radius of `ignite`,
+  `extinguish` and `scorch`; `FloraIndex`'s radii and distances; `Scatter`'s area, spacing and
+  grove size; `FloraGround`'s heights). The shaders get the unit in the shared buffer (slot 2,
+  lane w): the pushers' reach, the thin stems' radii and the falling leaves' drift follow it.
+  `FloraWind::speed` multiplies time, not a length, and stays as it was. Set it before planting:
+  a pooled tree's bands of distance are made when it is spawned. Tests: a felled oak lands on the
+  same update in a world in feet as in metres, a notched one is cut at the same metres, bucked
+  logs are the same logs the same gap apart, a fire spreads the same number of cells a second, the
+  default pusher covers the same share of a shrub, falling leaves fall for as long, and the bands
+  scale. `FloraUnits` is in the crate root and the prelude.
+
 ## [0.35.0] - 2026-10-13
 
 Three requests from a game moving its forest onto the crate (issues #53, #55 and #58): trees kept

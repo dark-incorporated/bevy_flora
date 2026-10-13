@@ -13,6 +13,7 @@ use bevy::transform::components::GlobalTransform;
 use crate::gpu::GrowthMaterial;
 use crate::impostor::ImpostorMaterial;
 use crate::shading::{FloraMaterial, FloraWindBuffer, TreeShakes};
+use crate::units::FloraUnits;
 
 /// Put on the game's camera to keep what it follows in view: the parts of trees between the
 /// camera and [`target`](Self::target) dither out, in a cone around the line of sight that is
@@ -36,8 +37,9 @@ pub struct SeeThroughTrees {
     /// What the camera must keep in view, in world space: the player's chest, a unit, the point
     /// under the cursor.
     pub target: Vec3,
-    /// How wide the clear view is at `target`, metres (a radius). The view closes over the last
-    /// tenth of the way to the target, so nothing behind it is cut.
+    /// How wide the clear view is at `target`, metres (a radius; [`FloraUnits`] scales it to the
+    /// world). The view closes over the last tenth of the way to the target, so nothing behind it
+    /// is cut.
     pub radius: f32,
 }
 
@@ -57,9 +59,11 @@ pub(crate) const SEE_THROUGH_SLOT: usize = 7 + 2 * TreeShakes::MAX;
 pub(crate) struct SeeThroughCapsule(pub [Vec4; 2]);
 
 impl SeeThroughCapsule {
-    fn of(camera: Option<(&SeeThroughTrees, &GlobalTransform)>) -> Self {
+    fn of(camera: Option<(&SeeThroughTrees, &GlobalTransform)>, units: &FloraUnits) -> Self {
         match camera {
-            Some((fade, at)) => Self([at.translation().extend(fade.radius.max(0.0)), fade.target.extend(1.0)]),
+            Some((fade, at)) => {
+                Self([at.translation().extend(units.world(fade.radius.max(0.0))), fade.target.extend(1.0)])
+            }
             None => Self::default(),
         }
     }
@@ -70,11 +74,12 @@ impl SeeThroughCapsule {
 /// the shaders cut only in the view drawn from exactly there.
 pub(crate) fn sync_see_through(
     cameras: Query<(&SeeThroughTrees, &GlobalTransform)>,
+    units: Res<FloraUnits>,
     mut capsule: ResMut<SeeThroughCapsule>,
     buffer: Option<Res<FloraWindBuffer>>,
     buffers: Option<ResMut<Assets<ShaderBuffer>>>,
 ) {
-    let now = SeeThroughCapsule::of(cameras.iter().next());
+    let now = SeeThroughCapsule::of(cameras.iter().next(), &units);
     // Look before borrowing mutably: a mutable borrow marks it changed.
     if *capsule == now {
         return;

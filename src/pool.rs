@@ -69,11 +69,13 @@ use crate::shape::TreeShape;
 use crate::skeleton::Skeleton;
 use crate::plugin::{ProceduralTree, leaf_material, material};
 use crate::shading::{FloraMaterial, FloraMaterialSupport, FloraWindBuffer, TextureLibrary, flora_material};
+use crate::units::FloraUnits;
 
 /// Trees whose children are created in one frame, at most: a hundred thousand
 /// trees get their entities over a few dozen frames instead of one long one.
 const MAX_TREES_PER_FRAME: usize = 4096;
-/// Width of the cross-fade between two levels of detail, in metres.
+/// Width of the cross-fade between two levels of detail, in metres (times [`FloraUnits`] in the
+/// world).
 const FADE: f32 = 2.0;
 
 /// Variants of one tree, built once and drawn many times. See the [module
@@ -334,14 +336,15 @@ fn bounds_of(tree: &TreeMeshes) -> Aabb {
 }
 
 /// The cross-fading range of distances in which a child is drawn: from `start`
-/// to `end` metres, each end fading over [`FADE`] metres around it. `end` may be
-/// infinite, and `start` zero.
-pub(crate) fn band(start: f32, end: f32) -> VisibilityRange {
-    let half = FADE / 2.0;
+/// to `end` metres, each end fading over [`FADE`] metres around it, all times `units` (the world
+/// units to a metre: [`FloraUnits`]). `end` may be infinite, and `start` zero.
+pub(crate) fn band(start: f32, end: f32, units: f32) -> VisibilityRange {
+    let half = FADE * units / 2.0;
     let edge = |at: f32| {
         if at <= 0.0 {
             0.0..0.0
         } else if at.is_finite() {
+            let at = at * units;
             (at - half)..(at + half)
         } else {
             at..at
@@ -400,9 +403,11 @@ pub(crate) fn spawn_pooled_trees(
     mut standard: ResMut<Assets<StandardMaterial>>,
     mut textures: TextureLibrary,
     trees: Query<(Entity, &PooledTree, Has<NotShadowCaster>), Without<PooledTreeSpawned>>,
+    units: Res<FloraUnits>,
     mut warned: Local<bool>,
 ) {
     let wind = wind.as_deref().filter(|_| flora_support.is_some());
+    let units = units.units_per_metre;
     make_pool_materials(&mut pools, wind, &mut flora, &mut standard, &mut textures);
     // A tree whose pool is not ready yet is skipped, not counted: it must not
     // keep trees of a ready pool from getting their children.
@@ -439,8 +444,8 @@ pub(crate) fn spawn_pooled_trees(
         let has_impostor = variant.impostor.is_some();
         // Without an impostor the last level of detail is drawn at any distance.
         let bands = [
-            band(0.0, lod1),
-            band(lod1, lod2),
+            band(0.0, lod1, units),
+            band(lod1, lod2, units),
             band(
                 lod2,
                 if has_impostor {
@@ -448,6 +453,7 @@ pub(crate) fn spawn_pooled_trees(
                 } else {
                     f32::INFINITY
                 },
+                units,
             ),
         ];
         let Some(materials) = &pool.materials else {
@@ -497,7 +503,7 @@ pub(crate) fn spawn_pooled_trees(
             commands.spawn((
                 Mesh3d(atlas.quad.clone()),
                 MeshMaterial3d(atlas.material.clone()),
-                band(impostor, f32::INFINITY),
+                band(impostor, f32::INFINITY, units),
                 Aabb {
                     center: Vec3A::new(0.0, atlas.center_y, 0.0),
                     half_extents: half,
@@ -809,10 +815,21 @@ mod tests {
 
     #[test]
     fn band_fades_around_its_ends() {
-        let range = band(30.0, 80.0);
+        let range = band(30.0, 80.0, 1.0);
         assert_eq!(range.start_margin, 29.0..31.0);
         assert_eq!(range.end_margin, 79.0..81.0);
-        let first = band(0.0, f32::INFINITY);
+        let first = band(0.0, f32::INFINITY, 1.0);
+        assert_eq!(first.start_margin, 0.0..0.0);
+        assert!(first.end_margin.start.is_infinite());
+    }
+
+    #[test]
+    fn bands_and_their_fades_are_metres_scaled_to_the_world() {
+        // 4 world units to the metre: 30 m is 120, its 2 m fade 8 wide, infinity stays infinite.
+        let range = band(30.0, 80.0, 4.0);
+        assert_eq!(range.start_margin, 116.0..124.0);
+        assert_eq!(range.end_margin, 316.0..324.0);
+        let first = band(0.0, f32::INFINITY, 4.0);
         assert_eq!(first.start_margin, 0.0..0.0);
         assert!(first.end_margin.start.is_infinite());
     }

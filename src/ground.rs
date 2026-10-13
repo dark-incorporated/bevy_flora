@@ -33,10 +33,10 @@ use bevy::math::{Vec2, Vec3};
 
 /// How many points around a trunk's base [`FloraGround::footing`] looks at.
 const FOOTING_SAMPLES: usize = 16;
-/// Half the distance, in metres, over which [`FloraGround::normal`] measures the slope.
+/// Half the distance, in world units, over which [`FloraGround::normal`] measures the slope.
 const SLOPE_STEP: f32 = 0.25;
 
-/// The height of the ground at every point (x, z) of the world, in metres. See the [module
+/// The height of the ground at every point (x, z) of the world, in world units. See the [module
 /// documentation](self).
 ///
 /// Cloning is cheap (the function is shared). The function is called from the felling systems
@@ -63,7 +63,7 @@ impl FloraGround {
         (self.height)(at)
     }
 
-    /// The ground's upward unit normal at `at`, from its heights 25 cm to either side.
+    /// The ground's upward unit normal at `at`, from its heights 0.25 world units to either side.
     pub fn normal(&self, at: Vec2) -> Vec3 {
         let dx = self.height(at + Vec2::X * SLOPE_STEP) - self.height(at - Vec2::X * SLOPE_STEP);
         let dz = self.height(at + Vec2::Y * SLOPE_STEP) - self.height(at - Vec2::Y * SLOPE_STEP);
@@ -75,7 +75,7 @@ impl FloraGround {
         self.normal(at).y.clamp(-1.0, 1.0).acos()
     }
 
-    /// The height to stand a trunk `radius` metres wide at `at`: the lowest ground under its
+    /// The height to stand a trunk `radius` world units wide at `at`: the lowest ground under its
     /// base, so the trunk meets the ground on every side and does not float on the downhill
     /// one. On flat ground it is the ground's height. `radius` is
     /// [`TreeParams::base_radius`](crate::TreeParams::base_radius) times the tree's scale.
@@ -83,7 +83,7 @@ impl FloraGround {
         self.around(at, radius).fold(f32::INFINITY, f32::min)
     }
 
-    /// The highest ground under a trunk `radius` metres wide at `at`: its uphill side.
+    /// The highest ground under a trunk `radius` world units wide at `at`: its uphill side.
     pub(crate) fn top(&self, at: Vec2, radius: f32) -> f32 {
         self.around(at, radius).fold(f32::NEG_INFINITY, f32::max)
     }

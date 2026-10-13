@@ -47,11 +47,11 @@ pub struct IndexedTree {
     pub base: Vec3,
     /// Up the trunk, unit length.
     pub axis: Vec3,
-    /// How long the trunk is, metres (a growing tree's grows).
+    /// How long the trunk is, in world units (a growing tree's grows).
     pub height: f32,
-    /// The trunk's radius at its foot, metres.
+    /// The trunk's radius at its foot, in world units.
     pub base_radius: f32,
-    /// The trunk's radius at its top, metres.
+    /// The trunk's radius at its top, in world units.
     pub top_radius: f32,
 }
 
@@ -64,7 +64,7 @@ pub struct TreeHit {
     pub point: Vec3,
     /// The bark's outward normal there, unit length.
     pub normal: Vec3,
-    /// How far along the ray, metres.
+    /// How far along the ray, in world units.
     pub distance: f32,
 }
 
@@ -74,18 +74,18 @@ impl IndexedTree {
         self.base + self.axis * self.height
     }
 
-    /// The trunk's radius `h` metres up its axis (clamped to the trunk).
+    /// The trunk's radius `h` world units up its axis (clamped to the trunk).
     pub fn radius_at(&self, h: f32) -> f32 {
         let t = if self.height > 0.0 { (h / self.height).clamp(0.0, 1.0) } else { 0.0 };
         self.base_radius + (self.top_radius - self.base_radius) * t
     }
 
-    /// How far `at` (world x and z) is from the bark at the trunk's foot, metres; 0 within it.
+    /// How far `at` (world x and z) is from the bark at the trunk's foot, in world units; 0 within it.
     pub fn distance_to(&self, at: Vec2) -> f32 {
         (self.base.xz().distance(at) - self.base_radius).max(0.0)
     }
 
-    /// Where `ray` first meets the trunk's side within `max` metres, if it does.
+    /// Where `ray` first meets the trunk's side within `max` world units, if it does.
     pub fn cast(&self, ray: Ray3d, max: f32) -> Option<TreeHit> {
         if self.height <= 0.0 {
             return None;
@@ -143,7 +143,8 @@ fn cell_of(at: Vec2) -> IVec2 {
 }
 
 impl FloraIndex {
-    /// The side of a grid cell, metres.
+    /// The side of a grid cell, in world units (queries are in world units too: [`FloraUnits`](crate::FloraUnits)
+    /// only scales what the crate measures in metres).
     pub const CELL: f32 = 8.0;
 
     /// How many trees it holds.
@@ -166,7 +167,7 @@ impl FloraIndex {
         self.trees.values().map(|(tree, ..)| tree)
     }
 
-    /// The trees whose bark at the foot is within `radius` metres of `at` (world x and z), in no
+    /// The trees whose bark at the foot is within `radius` world units of `at` (world x and z), in no
     /// order.
     pub fn within(&self, at: Vec2, radius: f32) -> impl Iterator<Item = &IndexedTree> {
         let (low, high) = (cell_of(at - Vec2::splat(radius)), cell_of(at + Vec2::splat(radius)));
@@ -181,12 +182,12 @@ impl FloraIndex {
             })
     }
 
-    /// The tree whose bark at the foot is nearest `at` (world x and z), within `max` metres.
+    /// The tree whose bark at the foot is nearest `at` (world x and z), within `max` world units.
     pub fn nearest(&self, at: Vec2, max: f32) -> Option<&IndexedTree> {
         self.within(at, max).min_by(|a, b| a.distance_to(at).total_cmp(&b.distance_to(at)))
     }
 
-    /// The first trunk `ray` meets within `max` metres: what an axe swung, a bullet fired or the
+    /// The first trunk `ray` meets within `max` world units: what an axe swung, a bullet fired or the
     /// player's look along it hits. Crowns and leaves do not stop it.
     pub fn cast_ray(&self, ray: Ray3d, max: f32) -> Option<TreeHit> {
         let mut best: Option<TreeHit> = None;
