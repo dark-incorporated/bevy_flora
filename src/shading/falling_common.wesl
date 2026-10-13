@@ -9,11 +9,12 @@
 //   face:   the card's face normal in the burst's space (xyz), one per card, so the tumble and the
 //           settling turn the whole card alike
 // `falling.rs` mirrors the timing (`landing_time`, the drift) to size the burst's bounds and its life.
-import package::shading::common::flora_wind;
+import package::shading::common::{flora_wind, world_per_metre};
 
 // Seconds a leaf takes to pick up most of its speed: it falls from rest, not from its full speed.
 const PICK_UP: f32 = 0.35;
-// How fast the wind carries a leaf across, metres per second at strength 1.
+// How fast the wind carries a leaf across, metres per second at strength 1 (times the world's
+// units to a metre, `world_per_metre`: so are `LIFT` and the swing below).
 const DRIFT: f32 = 1.5;
 // Seconds a leaf takes to shrink away once its time on the ground is up.
 const SHRINK: f32 = 1.0;
@@ -105,13 +106,15 @@ fn falling_leaf(
     let flight = min(t, land);
 
     // Down, picking up speed; across, carried by the wind and swinging from side to side as a
-    // falling leaf does, the swing growing as it falls.
+    // falling leaf does, the swing growing as it falls. (How fast it falls is the burst's own,
+    // in world units: `path.w`.)
     let wind = flora_wind[0];
+    let metre = world_per_metre();
     let swing_heading = 6.2831853 * leaf_hash(seed, 1.0);
     let swing = mix(0.12, 0.4, leaf_hash(seed, 2.0))
         * sin(mix(1.8, 3.2, leaf_hash(seed, 3.0)) * flight + 6.2831853 * leaf_hash(seed, 4.0))
-        * (1.0 - exp(-flight / 0.6));
-    let across = wind.xy * (wind.z * DRIFT * flight) + vec2<f32>(cos(swing_heading), sin(swing_heading)) * swing;
+        * (1.0 - exp(-flight / 0.6)) * metre;
+    let across = wind.xy * (wind.z * DRIFT * metre * flight) + vec2<f32>(cos(swing_heading), sin(swing_heading)) * swing;
     var centre = anchor.xyz + vec3<f32>(across.x, -min(fallen(flight, speed), height), across.y);
 
     // It tumbles about an axis of its own, and turns to lie flat, face up or face down as it came,
@@ -136,7 +139,7 @@ fn falling_leaf(
     offset = offset - level * (dot(offset, level) * settle * (1.0 - CURL));
     n = normalize(mix(n, level * select(-1.0, 1.0, dot(n, level) >= 0.0), settle));
     if t >= land {
-        centre.y = path.x + LIFT;
+        centre.y = path.x + LIFT * metre;
     }
     // Its time on the ground up, it shrinks away.
     let size = 1.0 - smoothstep(land + rest, land + rest + SHRINK, t);

@@ -80,11 +80,13 @@ use crate::plugin::{ProceduralTree, crown_material, material};
 use crate::shading::{
     FloraMaterial, FloraMaterialSupport, FloraUniform, FloraWindBuffer, Surface, TextureLibrary, flora_material,
 };
+use crate::units::FloraUnits;
 
 /// Trees whose children are created in one frame, at most: a hundred thousand
 /// trees get their entities over a few dozen frames instead of one long one.
 const MAX_TREES_PER_FRAME: usize = 4096;
-/// Width of the cross-fade between two levels of detail, in metres.
+/// Width of the cross-fade between two levels of detail, in metres (times [`FloraUnits`] in the
+/// world).
 const FADE: f32 = 2.0;
 
 /// Variants of one tree, built once and drawn many times. See the [module
@@ -448,7 +450,8 @@ fn bounds_of(tree: &TreeMeshes) -> Aabb {
 
 /// A level-of-detail child's band before [`LodScale`]: drawn from `start` to `end` metres, each
 /// end fading over [`FADE`] metres around it (`end` may be infinite, and `start` zero). The
-/// plugin keeps the child's `VisibilityRange` at this band times the scale ([`scale_lod_bands`]).
+/// plugin keeps the child's `VisibilityRange` at this band times the scale and the world units to
+/// a metre ([`FloraUnits`]; [`scale_lod_bands`]).
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LodBand {
     start: f32,
@@ -477,11 +480,12 @@ impl LodBand {
     }
 }
 
-/// A level-of-detail child's band and the range it is drawn with at a scale of 1, to spawn or
-/// insert together; [`scale_lod_bands`] rescales the range.
-pub(crate) fn banded(start: f32, end: f32) -> (LodBand, VisibilityRange) {
+/// A level-of-detail child's band (metres) and the range it is drawn with at `units` world units
+/// to a metre ([`FloraUnits`]) and no [`LodScale`] or zoom, to spawn or insert together;
+/// [`scale_lod_bands`] rescales the range.
+pub(crate) fn banded(start: f32, end: f32, units: f32) -> (LodBand, VisibilityRange) {
     let band = LodBand { start, end };
-    (band, band.range(1.0))
+    (band, band.range(units))
 }
 
 /// Multiplies every level-of-detail distance: where pooled trees ([`PooledTree`]) and trees
@@ -538,12 +542,13 @@ const REFERENCE_FOV: f32 = std::f32::consts::FRAC_PI_4;
 pub(crate) fn follow_orthographic_zoom(
     cameras: Query<(&Camera, &Projection, &GlobalTransform), With<Camera3d>>,
     ground: Option<Res<FloraGround>>,
+    units: Res<FloraUnits>,
     mut zoom: ResMut<ZoomScale>,
 ) {
     let main = cameras.iter().filter(|(camera, ..)| camera.is_active).min_by_key(|(camera, ..)| camera.order);
     let wanted = match main {
         Some((_, Projection::Orthographic(orthographic), at)) => {
-            orthographic_zoom(orthographic.area.height(), at, ground.as_deref())
+            orthographic_zoom(orthographic.area.height(), at, ground.as_deref(), &units)
         }
         _ => 1.0,
     };
@@ -555,8 +560,11 @@ pub(crate) fn follow_orthographic_zoom(
 
 /// The zoom of an orthographic camera at `at` whose view is `height` world units tall: its
 /// distance to where its view meets the ground, over the distance from which a perspective camera
-/// of [`REFERENCE_FOV`] sees as tall a view. 1 when it does not look down.
-fn orthographic_zoom(height: f32, at: &GlobalTransform, ground: Option<&FloraGround>) -> f32 {
+/// of [`REFERENCE_FOV`] sees as tall a view. 1 when it does not look down. The view height and the
+/// distance are read in metres (`units`), so a world in feet picks the levels a world in metres
+/// does at the same view.
+fn orthographic_zoom(height: f32, at: &GlobalTransform, ground: Option<&FloraGround>, units: &FloraUnits) -> f32 {
+    let height = units.metres(height);
     let forward = at.forward().as_vec3();
     let eye = at.translation();
     if forward.y > -1.0e-3 || height.is_nan() || height <= 0.0 {
@@ -571,28 +579,31 @@ fn orthographic_zoom(height: f32, at: &GlobalTransform, ground: Option<&FloraGro
         }
     }
     let seen_from = height / (2.0 * (REFERENCE_FOV / 2.0).tan());
-    (distance.max(0.0) / seen_from).clamp(1.0e-3, 1.0e3)
+    (units.metres(distance.max(0.0)) / seen_from).clamp(1.0e-3, 1.0e3)
 }
 
 /// Keep every level-of-detail child's `VisibilityRange` at its band times [`LodScale`] and the
-/// zoom: all of them when the factor changed, else only the children whose band is new or
-/// changed (none needs it at a factor of 1: they are spawned at it).
+/// zoom and the world units to a metre: all of them when the factor changed, else only the
+/// children whose band is new or changed (none needs it while `LodScale` and the zoom are 1: they
+/// are spawned at the unit).
 #[allow(clippy::type_complexity)]
 pub(crate) fn scale_lod_bands(
     lod: Res<LodScale>,
     zoom: Res<ZoomScale>,
+    units: Res<FloraUnits>,
     mut applied: Local<Option<f32>>,
     mut bands: ParamSet<(
         Query<(&LodBand, &mut VisibilityRange)>,
         Query<(&LodBand, &mut VisibilityRange), Changed<LodBand>>,
     )>,
 ) {
-    let scale = lod.0 * zoom.0;
-    let scale = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
-    let was = applied.replace(scale).unwrap_or(1.0);
+    let unit = units.units_per_metre;
+    let scale = lod.0 * zoom.0 * unit;
+    let scale = if scale.is_finite() && scale > 0.0 { scale } else { unit };
+    let was = applied.replace(scale).unwrap_or(unit);
     if scale != was {
         bands.p0().par_iter_mut().for_each(|(band, mut range)| *range = band.range(scale));
-    } else if scale != 1.0 {
+    } else if scale != unit {
         for (band, mut range) in &mut bands.p1() {
             *range = band.range(scale);
         }
@@ -655,9 +666,11 @@ pub(crate) fn spawn_pooled_trees(
     mut textures: TextureLibrary,
     recolors: Res<PoolRecolors>,
     trees: Query<(Entity, &PooledTree, Option<&PooledLook>, Has<NotShadowCaster>), Without<PooledTreeSpawned>>,
+    units: Res<FloraUnits>,
     mut warned: Local<bool>,
 ) {
     let wind = wind.as_deref().filter(|_| flora_support.is_some());
+    let units = units.units_per_metre;
     make_pool_materials(&mut pools, &recolors, wind, &mut flora, &mut standard, &mut textures);
     // A tree whose pool is not ready yet is skipped, not counted: it must not
     // keep trees of a ready pool from getting their children.
@@ -694,8 +707,8 @@ pub(crate) fn spawn_pooled_trees(
         let has_impostor = variant.impostor.is_some();
         // Without an impostor the last level of detail is drawn at any distance.
         let bands = [
-            banded(0.0, lod1),
-            banded(lod1, lod2),
+            banded(0.0, lod1, units),
+            banded(lod1, lod2, units),
             banded(
                 lod2,
                 if has_impostor {
@@ -703,6 +716,7 @@ pub(crate) fn spawn_pooled_trees(
                 } else {
                     f32::INFINITY
                 },
+                units,
             ),
         ];
         let look = look.map_or(0, |look| look.0 as usize);
@@ -755,7 +769,7 @@ pub(crate) fn spawn_pooled_trees(
             commands.spawn((
                 Mesh3d(atlas.quad.clone()),
                 MeshMaterial3d(material.clone()),
-                banded(impostor, f32::INFINITY),
+                banded(impostor, f32::INFINITY, units),
                 Aabb {
                     center: Vec3A::new(0.0, atlas.center_y, 0.0),
                     half_extents: half,
@@ -1239,10 +1253,21 @@ mod tests {
 
     #[test]
     fn band_fades_around_its_ends() {
-        let (_, range) = banded(30.0, 80.0);
+        let (_, range) = banded(30.0, 80.0, 1.0);
         assert_eq!(range.start_margin, 29.0..31.0);
         assert_eq!(range.end_margin, 79.0..81.0);
-        let (_, first) = banded(0.0, f32::INFINITY);
+        let (_, first) = banded(0.0, f32::INFINITY, 1.0);
+        assert_eq!(first.start_margin, 0.0..0.0);
+        assert!(first.end_margin.start.is_infinite());
+    }
+
+    #[test]
+    fn bands_and_their_fades_are_metres_scaled_to_the_world() {
+        // 4 world units to the metre: 30 m is 120, its 2 m fade 8 wide, infinity stays infinite.
+        let (_, range) = banded(30.0, 80.0, 4.0);
+        assert_eq!(range.start_margin, 116.0..124.0);
+        assert_eq!(range.end_margin, 316.0..324.0);
+        let (_, first) = banded(0.0, f32::INFINITY, 4.0);
         assert_eq!(first.start_margin, 0.0..0.0);
         assert!(first.end_margin.start.is_infinite());
     }
@@ -1663,5 +1688,64 @@ mod tests {
         let (_, flat) = dressed(&app, &pool, 2);
         assert_eq!(flat.base.base_color, FLAT_BLUE.leaves);
         assert!(flat.base.unlit);
+    }
+
+    #[test]
+    fn a_world_in_feet_picks_the_levels_a_world_in_metres_does() {
+        use bevy::camera::OrthographicProjection;
+        use bevy::math::Rect;
+        const FEET: f32 = 3.2808;
+        let mut app = app();
+        app.insert_resource(FloraUnits { units_per_metre: FEET });
+        let pool = make_pool(&mut app, 1);
+        let pooled = app.world_mut().spawn(PooledTree { pool, variant: 0 }).id();
+        let oak = crate::presets::TreePreset::Oak.params();
+        let grown = app.world_mut().spawn((ProceduralTree(oak), crate::lod::TreeLod::default())).id();
+        app.update();
+        app.update();
+        // Every banded child is drawn where its band, in metres, says, times `scale` metres'
+        // worth of world units; the fade is 2 m wide.
+        let drawn_at = |app: &App, scale: f32| {
+            let world = app.world();
+            let mut banded = 0;
+            for tree in [pooled, grown] {
+                for child in world.get::<Children>(tree).unwrap().iter() {
+                    let (Some(band), Some(range)) = (world.get::<LodBand>(child), world.get::<VisibilityRange>(child))
+                    else {
+                        continue;
+                    };
+                    let middle = |r: &std::ops::Range<f32>| (r.start + r.end) / 2.0;
+                    for (end, fade) in [(band.start, &range.start_margin), (band.end, &range.end_margin)] {
+                        if end > 0.0 && end.is_finite() {
+                            let want = end * scale * FEET;
+                            assert!((middle(fade) - want).abs() < 1.0e-3 * want, "{end} m at {scale}: {fade:?}");
+                            assert!(((fade.end - fade.start) - FADE * scale * FEET).abs() < 1.0e-3, "the fade at {scale}");
+                        }
+                    }
+                    banded += 1;
+                }
+            }
+            assert!(banded >= 12, "{banded} banded children");
+        };
+        drawn_at(&app, 1.0);
+
+        // The camera of the metre test, in feet: 50 m up and back, a 20 m view.
+        let view = |height: f32| {
+            let height = height * FEET;
+            let area = Rect::new(-height, -height / 2.0, height, height / 2.0);
+            Projection::Orthographic(OrthographicProjection { area, ..OrthographicProjection::default_3d() })
+        };
+        let eye = Transform::from_xyz(0.0, 50.0 * FEET, 50.0 * FEET).looking_at(Vec3::ZERO, Vec3::Y);
+        let camera = app.world_mut().spawn((Camera3d::default(), view(20.0), GlobalTransform::from(eye))).id();
+        app.update();
+        let near = 50.0 * 2f32.sqrt() / (20.0 / (2.0 * (std::f32::consts::FRAC_PI_8).tan()));
+        assert!((app.world().resource::<ZoomScale>().0 - near).abs() < 1.0e-3, "the zoom is the metre world's");
+        drawn_at(&app, near);
+        app.world_mut().entity_mut(camera).insert(view(200.0));
+        app.update();
+        drawn_at(&app, near / 10.0);
+        app.world_mut().entity_mut(camera).insert(Projection::default());
+        app.update();
+        drawn_at(&app, 1.0);
     }
 }

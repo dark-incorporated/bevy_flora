@@ -58,6 +58,7 @@ use crate::mesh::ATTRIBUTE_LEAF_SWAY;
 use crate::plugin::{Paint, ProceduralTree, TreeGenerated, TreeRender};
 use crate::rng::SeededRng;
 use crate::shading::{FloraSeason, TreeShake, TreeShakes};
+use crate::units::FloraUnits;
 
 /// A picked fruit's vertex alpha: still in the fruit's band (`is_fruit`), which the shaders then
 /// do not draw (`leaf_hidden` in `common.wesl`).
@@ -66,12 +67,13 @@ pub(crate) const PICKED_ALPHA: f32 = 0.375;
 /// How much of the leaf fall has passed when the last fruit drops (`FRUIT_FALL` in `common.wesl`).
 const FRUIT_FALL: f32 = 0.67;
 
-/// Gravity, metres per second squared.
+/// Gravity, metres per second squared (times [`FloraUnits`] in the world).
 const GRAVITY: f32 = 9.81;
 /// What a bouncing fruit keeps of its speed down (up again) and along the ground.
 const BOUNCE: f32 = 0.3;
 const SKID: f32 = 0.5;
-/// Slower than this down, metres per second, a fruit landing stops instead of bouncing.
+/// Slower than this down, metres per second (times [`FloraUnits`] in the world), a fruit landing
+/// stops instead of bouncing.
 const SETTLE: f32 = 0.8;
 
 /// One fruit a tree grew.
@@ -124,7 +126,7 @@ impl TreeFruit {
     }
 
     /// The fruit on the tree ([`Self::on_tree`]) nearest `at` (world space) on the tree standing at
-    /// `tree`, if one hangs within `max` metres of it, and where it hangs in the world.
+    /// `tree`, if one hangs within `max` world units of it, and where it hangs in the world.
     pub fn nearest(&self, season: &FloraSeason, tree: &GlobalTransform, at: Vec3, max: f32) -> Option<(Fruit, Vec3)> {
         self.on_tree(season)
             .map(|fruit| (*fruit, fruit.world(tree)))
@@ -347,6 +349,7 @@ pub(crate) fn shake_fruit_loose(
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
     mut trees: Query<(Entity, &GlobalTransform, &ProceduralTree, &mut TreeFruit), Without<Felled>>,
     mut fell: MessageWriter<FruitFell>,
+    units: Res<FloraUnits>,
 ) {
     let new: Vec<TreeShake> = shakes.iter().filter(|shake| !seen.contains(shake)).copied().collect();
     seen.clear();
@@ -355,7 +358,8 @@ pub(crate) fn shake_fruit_loose(
         return;
     }
     for shake in new {
-        let radius = shake.radius.max(0.01);
+        // The shake's radius is metres, the distance to a tree world units.
+        let radius = shake.radius.max(0.01) * units.units_per_metre;
         // One draw per fruit and shake: the shake's start (render time) tells one shake from the next.
         let stream = shake.start.to_bits();
         for (tree, at, params, mut fruit) in &mut trees {
@@ -382,7 +386,9 @@ pub(crate) fn shake_fruit_loose(
             for apple in loose {
                 fruit.pick(apple.key);
                 let mut rng = SeededRng::from_parts(apple.key as i32, stream ^ 0x5EED);
-                let push = away * rng.range(0.2, 0.8) + Vec2::new(rng.range(-0.4, 0.4), rng.range(-0.4, 0.4));
+                // A push of a few tenths of a metre a second, in the world's units.
+                let push = (away * rng.range(0.2, 0.8) + Vec2::new(rng.range(-0.4, 0.4), rng.range(-0.4, 0.4)))
+                    * units.units_per_metre;
                 let transform = Transform::from_translation(apple.world(at)).with_scale(Vec3::splat(apple.radius * scale));
                 let fallen = FallenFruit {
                     tree,
@@ -419,9 +425,11 @@ pub(crate) fn drop_fallen_fruit(
     time: Res<Time>,
     settings: Res<FallingFruit>,
     ground: Option<Res<FloraGround>>,
+    units: Res<FloraUnits>,
     mut fruit: Query<(Entity, &mut FallenFruit, &mut Transform)>,
 ) {
     let (dt, now) = (time.delta_secs(), time.elapsed_secs());
+    let (gravity, settle) = (GRAVITY * units.units_per_metre, SETTLE * units.units_per_metre);
     for (entity, mut fallen, mut transform) in &mut fruit {
         if let Some(rested_at) = fallen.rested_at {
             if now - rested_at >= settings.rest {
@@ -429,13 +437,13 @@ pub(crate) fn drop_fallen_fruit(
             }
             continue;
         }
-        fallen.velocity.y -= GRAVITY * dt;
+        fallen.velocity.y -= gravity * dt;
         transform.translation += fallen.velocity * dt;
         let radius = transform.scale.y;
         let floor = ground.as_ref().map_or(fallen.base, |g| g.height(transform.translation.xz())) + radius;
         if transform.translation.y <= floor {
             transform.translation.y = floor;
-            if fallen.velocity.y < -SETTLE {
+            if fallen.velocity.y < -settle {
                 fallen.velocity = Vec3::new(fallen.velocity.x * SKID, -fallen.velocity.y * BOUNCE, fallen.velocity.z * SKID);
             } else {
                 fallen.velocity = Vec3::ZERO;

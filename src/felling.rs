@@ -46,6 +46,7 @@ use crate::recolor::{CutWood, TreeColors};
 use crate::shading::{FloraMaterial, FloraWindBuffer, SharedFlora, TextureLibrary, TreeShake, TreeShakes};
 use crate::params::TreeParams;
 use crate::skeleton::{NodeKind, Skeleton, trunk_wobble};
+use crate::units::FloraUnits;
 
 /// Fell this tree: insert it on a [`ProceduralTree`] or a [`PooledTree`]. See the
 /// [module docs](self).
@@ -55,7 +56,8 @@ pub struct FellTree {
     /// Which way the tree falls, world x and z; normalised when used. Zero falls along +x.
     pub direction: Vec2,
     /// Where the saw goes in, in metres above the tree's base (at least 5 cm, at most half the
-    /// trunk); with a [`FloraGround`], above the ground on the uphill side of the trunk.
+    /// trunk); with a [`FloraGround`], above the ground on the uphill side of the trunk. Metres:
+    /// [`FloraUnits`] scales it (and the 5 cm) to the world.
     pub cut_height: f32,
     /// How fast it falls: 1 as a real tree of its height would (a 15 m tree takes about four
     /// seconds from the first lean to the ground), 2 twice as fast.
@@ -130,9 +132,11 @@ pub struct TreeLanded {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Reflect)]
 #[reflect(Component)]
 pub struct BuckTree {
-    /// The length of each log, metres. The trunk above the last whole log stays with the crown.
+    /// The length of each log, metres ([`FloraUnits`] scales it to the world). The trunk above the
+    /// last whole log stays with the crown.
     pub log_length: f32,
-    /// The thinnest a log's top end may be, metres: the trunk above it is too thin for logs.
+    /// The thinnest a log's top end may be, metres ([`FloraUnits`] scales it to the world): the
+    /// trunk above it is too thin for logs.
     pub min_radius: f32,
 }
 
@@ -221,8 +225,8 @@ pub struct TreeNotch {
     /// The side it is cut from, world x and z; normalised when used. Zero is +x.
     pub direction: Vec2,
     /// The height of its floor, metres above the tree's base (at least 5 cm, at most half the
-    /// trunk); with a [`FloraGround`], above the ground on the uphill side of the trunk, as
-    /// [`FellTree::cut_height`].
+    /// trunk; [`FloraUnits`] scales it to the world); with a [`FloraGround`], above the ground on
+    /// the uphill side of the trunk, as [`FellTree::cut_height`].
     pub height: f32,
     /// How far into the trunk it reaches at its floor, a share of the trunk's width there: 0
     /// cuts nothing, 0.25 is a felling notch, 0.9 the most.
@@ -276,6 +280,7 @@ const SETTLE_RISE: f32 = 0.004;
 const START_SPIN: f32 = 0.08;
 /// Integration step, seconds.
 const STEP: f32 = 1.0 / 240.0;
+/// Gravity, metres per second squared; times [`FloraUnits`] in the world.
 const GRAVITY: f32 = 9.81;
 /// Limbs at least this share of the trunk's radius at the cut, and at least [`CONTACT_RADIUS`]
 /// (metres), stop a falling tree; thinner branches, twigs and the leaves give way and may end
@@ -286,8 +291,9 @@ const CONTACT_RADIUS: f32 = 0.04;
 /// The furthest a felled tree turns, from upright: on flat ground its trunk meets the ground
 /// before 105°; down a steep slope it can lie along it, well past 90°.
 const REST_LIMIT: f32 = 150.0 * std::f32::consts::PI / 180.0;
-/// The gap between bucked logs laid in a row, and between the first and the stump, metres:
-/// enough that the row reads as separate logs, and their end grain shows between them.
+/// The gap between bucked logs laid in a row, and between the first and the stump, metres (times
+/// [`FloraUnits`] in the world): enough that the row reads as separate logs, and their end grain
+/// shows between them.
 const LOG_GAP: f32 = 0.15;
 
 /// Start felling every tree with a [`FellTree`] that can be cut: turn a pooled tree into its
@@ -305,6 +311,7 @@ pub(crate) fn start_felling(
     pools: Option<Res<Assets<TreePool>>>,
     recolors: Res<PoolRecolors>,
     ground: Option<Res<FloraGround>>,
+    units: Res<FloraUnits>,
     mut cut_face: ResMut<CutFace>,
     trees: Query<(
         Entity,
@@ -365,8 +372,9 @@ pub(crate) fn start_felling(
         let scale = transform.scale.y.max(1.0e-4);
         // A notched tree is cut at the notch's floor; on a slope the saw goes in above the uphill
         // side of the trunk.
-        let notch = notch.and_then(|notch| notch_in(&built.trunk, notch, transform, &tree.0, ground.as_deref()));
-        let cut_y = notch.map_or_else(|| saw_height(transform, &tree.0, ground.as_deref(), fell.cut_height), |n| n.floor);
+        let notch = notch.and_then(|notch| notch_in(&built.trunk, notch, transform, &tree.0, ground.as_deref(), units.units_per_metre));
+        let cut_y = notch
+            .map_or_else(|| saw_height(transform, &tree.0, ground.as_deref(), fell.cut_height, units.units_per_metre), |n| n.floor);
         let above = cut(&built.trunk, cut_y, true);
         let below = cut(&built.trunk, cut_y, false);
         let unlit = colors.is_some_and(|colors| colors.0.unlit);
@@ -439,7 +447,7 @@ pub(crate) fn start_felling(
                 axis,
                 rest,
                 contact,
-                pull: 1.5 * GRAVITY / length.max(0.5) * speed * speed,
+                pull: 1.5 * GRAVITY * units.units_per_metre / length.max(0.5 * units.units_per_metre) * speed * speed,
                 spin: START_SPIN * speed,
                 landed: false,
                 lying: fell.lying,
@@ -462,6 +470,7 @@ pub(crate) fn carve_notches(
     pools: Option<Res<Assets<TreePool>>>,
     recolors: Res<PoolRecolors>,
     ground: Option<Res<FloraGround>>,
+    units: Res<FloraUnits>,
     mut cut_face: ResMut<CutFace>,
     trees: Query<
         (
@@ -507,7 +516,7 @@ pub(crate) fn carve_notches(
         }
         let Some(handle) = &render.trunk_mesh else { continue };
         let wood = skeleton_mesh(&aged_skeleton(&render.full, &tree.0, render.age), &tree.0);
-        let (wood, faces) = match notch_in(&wood, notch, transform, &tree.0, ground.as_deref()) {
+        let (wood, faces) = match notch_in(&wood, notch, transform, &tree.0, ground.as_deref(), units.units_per_metre) {
             Some(cut) => carve_notch(&wood, &cut),
             None => (wood, MeshData::default()),
         };
@@ -565,8 +574,9 @@ pub(crate) fn calm_params(params: &TreeParams) -> TreeParams {
 
 /// How high the saw or the axe goes in, in a tree's own space: `height` metres above its base
 /// (at least 5 cm, at most half its trunk), or with `ground` above the ground on the uphill side
-/// of its trunk.
-fn saw_height(transform: &Transform, params: &TreeParams, ground: Option<&FloraGround>, height: f32) -> f32 {
+/// of its trunk. `units` is the world units to a metre ([`FloraUnits`]): `height` and the 5 cm are
+/// metres, the tree's `transform` and the ground are the world's.
+fn saw_height(transform: &Transform, params: &TreeParams, ground: Option<&FloraGround>, height: f32, units: f32) -> f32 {
     let scale = transform.scale.y.max(1.0e-4);
     let uphill = ground.map_or(0.0, |ground| {
         let top = ground.top(transform.translation.xz(), params.base_radius() * scale);
@@ -574,17 +584,25 @@ fn saw_height(transform: &Transform, params: &TreeParams, ground: Option<&FloraG
     });
     // A trunk shorter than 0.1 m (the fern) is cut at most half way up, whatever the least cut says.
     let most = params.trunk.height * 0.5;
-    (uphill + height / scale).clamp((0.05 / scale).min(most), most)
+    (uphill + height * units / scale).clamp((0.05 * units / scale).min(most), most)
 }
 
 /// Where `notch` cuts into `wood`, the wood of a tree of `params` standing at `transform`, in its
-/// own space; `None` where it cuts nothing (no depth, or no trunk at its floor).
-fn notch_in(wood: &MeshData, notch: &TreeNotch, transform: &Transform, params: &TreeParams, ground: Option<&FloraGround>) -> Option<Notch> {
+/// own space; `None` where it cuts nothing (no depth, or no trunk at its floor). `units`: world
+/// units to a metre ([`FloraUnits`]).
+fn notch_in(
+    wood: &MeshData,
+    notch: &TreeNotch,
+    transform: &Transform,
+    params: &TreeParams,
+    ground: Option<&FloraGround>,
+    units: f32,
+) -> Option<Notch> {
     let depth = notch.depth.min(0.9);
     if depth.is_nan() || depth <= 0.0 {
         return None;
     }
-    let floor = saw_height(transform, params, ground, notch.height);
+    let floor = saw_height(transform, params, ground, notch.height, units);
     let level = cut(wood, floor, false);
     // The trunk's outline: the one round the tree's base, not a hanging limb's.
     let centre_of = |o: &[Vec3]| o.iter().copied().sum::<Vec3>() / o.len() as f32;
@@ -597,7 +615,7 @@ fn notch_in(wood: &MeshData, notch: &TreeNotch, transform: &Transform, params: &
     // The face rises at 45° and leaves the trunk `front - inner` above the floor; the carving
     // stops well clear of that, above and beyond.
     let rise = front - inner;
-    let margin = 0.05 / transform.scale.y.max(1.0e-4);
+    let margin = 0.05 * units / transform.scale.y.max(1.0e-4);
     Some(Notch {
         floor,
         mouth: floor + 1.5 * rise + margin,
@@ -615,6 +633,7 @@ pub(crate) fn drive_felling(
     mut commands: Commands,
     time: Res<Time>,
     mut shakes: ResMut<TreeShakes>,
+    units: Res<FloraUnits>,
     mut landed: MessageWriter<TreeLanded>,
     mut trees: Query<(Entity, &mut Felled, &mut Transform)>,
 ) {
@@ -659,7 +678,8 @@ pub(crate) fn drive_felling(
                     shakes.shake(own, &time);
                     let crash = TreeShake {
                         at: at.xz(),
-                        radius: fall.crown_radius.max(2.0),
+                        // A shake's radius is metres; the crown's reach is world units.
+                        radius: units.metres(fall.crown_radius).max(2.0),
                         strength: 1.2,
                         duration: 2.5,
                         ..Default::default()
@@ -696,6 +716,7 @@ pub(crate) fn buck_trees(
     mut textures: TextureLibrary,
     mut cut_face: ResMut<CutFace>,
     ground: Option<Res<FloraGround>>,
+    units: Res<FloraUnits>,
     mut bucked: MessageWriter<TreeBucked>,
     trees: Query<(
         Entity,
@@ -744,8 +765,9 @@ pub(crate) fn buck_trees(
         // In a row from the stump's front edge, the way the tree fell.
         let up = lying.rotation * Vec3::Y;
         let along = Vec2::new(up.x, up.z).normalize_or(Vec2::X);
-        let mut at = fall.base.transform_point(fall.hinge).xz() + along * LOG_GAP;
-        let length = buck.log_length.max(0.1);
+        let gap = LOG_GAP * units.units_per_metre;
+        let mut at = fall.base.transform_point(fall.hinge).xz() + along * gap;
+        let length = units.world(buck.log_length.max(0.1));
         let mut logs = Vec::new();
         let mut y0 = fall.hinge.y;
         while y0 + length / scale <= top {
@@ -753,7 +775,7 @@ pub(crate) fn buck_trees(
             let lower = cut(&trunk, y0, true);
             let piece = cut(&lower.kept, y1, false);
             let (Some((c0, r0)), Some((c1, r1))) = (log_end(&lower.outlines), log_end(&piece.outlines)) else { break };
-            if r1 * scale < buck.min_radius {
+            if r1 * scale < units.world(buck.min_radius) {
                 break;
             }
             // Its ends on the ground, a log's length apart along it.
@@ -790,7 +812,7 @@ pub(crate) fn buck_trees(
             logs.push(log);
             // The next starts a gap past where this one ends (its taper turns it a little, so not
             // quite at `far`).
-            at = place.transform_point(c1).xz() + along * LOG_GAP;
+            at = place.transform_point(c1).xz() + along * gap;
             y0 = y1;
         }
         commands.entity(entity).despawn();
@@ -1206,8 +1228,13 @@ mod tests {
     /// Fell a tree of `params` standing at `at` toward `direction` and buck it into logs of the
     /// default length; the `TreeBucked` message.
     fn fell_and_buck(app: &mut bevy::app::App, params: &TreeParams, at: Vec3, direction: Vec2) -> TreeBucked {
+        fell_and_buck_as(app, params, Transform::from_translation(at), direction)
+    }
+
+    /// As [`fell_and_buck`], the tree placed with `transform` (scaled, in a world of other units).
+    fn fell_and_buck_as(app: &mut bevy::app::App, params: &TreeParams, transform: Transform, direction: Vec2) -> TreeBucked {
         use bevy::ecs::message::Messages;
-        let tree = app.world_mut().spawn((ProceduralTree(params.clone()), Transform::from_translation(at))).id();
+        let tree = app.world_mut().spawn((ProceduralTree(params.clone()), transform)).id();
         app.update();
         let fell = FellTree { direction, speed: 4.0, ..Default::default() };
         app.world_mut().entity_mut(tree).insert((fell, BuckTree::default()));
@@ -1334,7 +1361,7 @@ mod tests {
             let notch = TreeNotch { direction: Vec2::new(0.0, -1.0), height: 0.6, depth };
             app.world_mut().entity_mut(tree).insert(notch);
             app.update();
-            let wedge = notch_in(&wood, &notch, &Transform::default(), &params, None).unwrap();
+            let wedge = notch_in(&wood, &notch, &Transform::default(), &params, None, 1.0).unwrap();
             let face = wedge.face();
             let inside = drawn_wood(&app, tree)
                 .into_iter()
@@ -1573,6 +1600,93 @@ mod tests {
                 .filter(|&c| app.world().get::<MeshMaterial3d<StandardMaterial>>(c).is_some())
                 .collect();
             assert!(!ends.is_empty() && ends.iter().all(|&end| plain_of(&app, end).unlit), "the logs' end grain is unlit");
+        }
+    }
+
+    /// An oak felled toward +x at the default speed (as a real one, a few seconds) in a world of
+    /// `units` world units to the metre, the tree scaled by `scale` as a game scales its trees, and
+    /// notched at `notch` metres when given: the update the first `TreeLanded` came on, the height
+    /// of the cut in the tree's own space and the angle it came to rest at.
+    fn fell_in_a_world_of(units: f32, scale: f32, notch: Option<f32>) -> (usize, f32, f32) {
+        use bevy::ecs::message::Messages;
+        let mut app = app();
+        app.insert_resource(FloraUnits { units_per_metre: units });
+        let at = Transform::from_xyz(2.0 * scale, 0.0, -scale).with_scale(Vec3::splat(scale));
+        let tree = app.world_mut().spawn((ProceduralTree(TreePreset::Oak.params()), at)).id();
+        app.update();
+        if let Some(height) = notch {
+            app.world_mut().entity_mut(tree).insert(TreeNotch { direction: Vec2::X, height, depth: 0.3 });
+            app.update();
+        }
+        app.world_mut().entity_mut(tree).insert(FellTree { direction: Vec2::X, ..Default::default() });
+        let mut cursor = app.world().resource::<Messages<TreeLanded>>().get_cursor_current();
+        for step in 0..900 {
+            app.update();
+            if cursor.read(app.world().resource::<Messages<TreeLanded>>()).next().is_some() {
+                let felled = app.world().get::<Felled>(tree).expect("a landed tree is felled");
+                return (step, felled.fall.hinge.y, felled.fall.rest);
+            }
+        }
+        panic!("the oak never landed ({units} units to the metre)");
+    }
+
+    #[test]
+    fn a_tree_felled_in_a_world_in_feet_lands_on_the_step_it_does_in_metres() {
+        const FEET: f32 = 3.2808;
+        let metres = fell_in_a_world_of(1.0, 1.0, None);
+        let feet = fell_in_a_world_of(FEET, FEET, None);
+        assert!(metres.0 > 20, "it landed after {} updates: not a tree of its size falling", metres.0);
+        assert!(metres.0.abs_diff(feet.0) <= 1, "landed on update {} in metres, {} in feet", metres.0, feet.0);
+        // The cut is half a metre up in either world, and it comes to rest at the same angle.
+        assert!((metres.1 - 0.5).abs() < 1.0e-4 && (feet.1 - 0.5).abs() < 1.0e-4, "cut at {} and {}", metres.1, feet.1);
+        assert!((metres.2 - feet.2).abs() < 1.0e-3, "rests at {} and {} rad", metres.2, feet.2);
+        // Without the units the feet world's tree is three times as long under the same gravity
+        // and takes much longer: what the test would otherwise not tell.
+        let unscaled = fell_in_a_world_of(1.0, FEET, None);
+        assert!(unscaled.0 * 2 > metres.0 * 3, "an unscaled world landed on update {} against {}", unscaled.0, metres.0);
+    }
+
+    #[test]
+    fn a_notch_is_cut_at_the_same_metres_in_a_world_in_feet() {
+        let metres = fell_in_a_world_of(1.0, 1.0, Some(0.8));
+        let feet = fell_in_a_world_of(3.2808, 3.2808, Some(0.8));
+        assert!((metres.1 - 0.8).abs() < 1.0e-4 && (feet.1 - 0.8).abs() < 1.0e-4, "cut at {} and {} m", metres.1, feet.1);
+        assert!(metres.0.abs_diff(feet.0) <= 1, "landed on update {} in metres, {} in feet", metres.0, feet.0);
+    }
+
+    #[test]
+    fn logs_bucked_in_a_world_in_feet_are_the_same_logs_the_same_gap_apart() {
+        const FEET: f32 = 3.2808;
+        let params = TreePreset::Oak.params();
+        let lay = |units: f32| {
+            let mut app = app();
+            app.insert_resource(FloraUnits { units_per_metre: units });
+            let bucked = fell_and_buck_as(&mut app, &params, Transform::from_scale(Vec3::splat(units)), Vec2::X);
+            // Each log's two ends in world space, and its butt radius in the tree's own space.
+            bucked
+                .logs
+                .iter()
+                .map(|&log| {
+                    let capsule = app.world().get::<TreeLog>(log).unwrap().capsule;
+                    let place = app.world().get::<Transform>(log).unwrap();
+                    (place.transform_point(capsule.a), place.transform_point(capsule.b), capsule.radius)
+                })
+                .collect::<Vec<(Vec3, Vec3, f32)>>()
+        };
+        let (metres, feet) = (lay(1.0), lay(FEET));
+        assert!(metres.len() >= 2, "{} logs", metres.len());
+        assert_eq!(metres.len(), feet.len(), "a different number of logs in feet");
+        for (m, f) in metres.iter().zip(&feet) {
+            assert!((m.0.distance(m.1) - 2.0).abs() < 0.04, "a log {} m long", m.0.distance(m.1));
+            assert!((f.0.distance(f.1) - 2.0 * FEET).abs() < 0.04 * FEET, "a log {} ft long", f.0.distance(f.1));
+            assert!((m.2 - f.2).abs() < 1.0e-4, "radius {} and {}", m.2, f.2);
+        }
+        // 15 cm apart along the ground, in a row from the stump: 15 cm of feet in the other world.
+        for (row, gap) in [(&metres, 0.15), (&feet, 0.15 * FEET)] {
+            for pair in row.windows(2) {
+                let apart = (pair[1].0.xz() - pair[0].1.xz()).length();
+                assert!((apart - gap).abs() < 0.01 * gap, "{apart} between logs, not {gap}");
+            }
         }
     }
 }

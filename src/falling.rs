@@ -66,6 +66,7 @@ use crate::plugin::{Paint, ProceduralTree, TreeRender};
 use crate::pool::{PoolMaterials, PooledLook, PooledTree, TreePool};
 use crate::rng::SeededRng;
 use crate::shading::{FloraExtension, FloraMaterial, FloraSeason, FloraWind, TreeShake, TreeShakes};
+use crate::units::FloraUnits;
 
 /// How many leaves fall and how long they lie. A resource; the plugin adds the default.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Reflect)]
@@ -78,7 +79,7 @@ pub struct FallingLeaves {
     pub per_landing: u32,
     /// Deciduous trees standing within this many metres of a camera let the leaves the season
     /// sheds fall ([`FloraSeason::leaf_fall`]); farther ones lose them where they hang, as before.
-    /// 0 lets none fall.
+    /// 0 lets none fall. Metres: [`FloraUnits`] scales it to the world.
     pub autumn_distance: f32,
     /// Seconds a fallen leaf lies on the ground before it shrinks away, each a quarter more or less.
     pub rest: f32,
@@ -159,7 +160,8 @@ pub(crate) fn specialize_falling(
     Ok(())
 }
 
-// The fall's timing, as in `falling_common.wesl`.
+// The fall's timing and distances, as in `falling_common.wesl`. The distances are metres; the
+// world's units to a metre ([`FloraUnits`]) scale them where they are used.
 /// Seconds a leaf takes to pick up most of its speed.
 const PICK_UP: f32 = 0.35;
 /// How fast the wind carries a leaf across, metres per second at strength 1.
@@ -173,7 +175,8 @@ const SWING: f32 = 0.4;
 const LET_GO: f32 = 0.5;
 /// How fast a leaf falls once it has picked up speed, metres per second: each its own in this range.
 const SPEED: Range<f32> = 0.9..1.5;
-/// A leaf that hangs less than this above the ground (a felled tree's crown lies on it) stays put.
+/// A leaf that hangs less than this above the ground, metres (a felled tree's crown lies on it),
+/// stays put.
 const LOWEST: f32 = 0.05;
 /// Leaf meshes whose cards [`FallCaches`] keeps, at most: a pool's few variants, the trees that
 /// drop leaves often.
@@ -451,17 +454,21 @@ pub(crate) struct Fall {
     pub now: f32,
     /// [`FallingLeaves::rest`].
     pub rest: f32,
-    /// The wind's drift, metres per second on the ground.
+    /// The wind's drift, world units per second on the ground.
     pub drift: Vec2,
+    /// World units to a metre ([`FloraUnits`]): what scales the speeds and the margins below.
+    pub units: f32,
 }
 
 impl Fall {
-    /// The fall of leaves that let go now, under `wind`.
-    fn now(time: &Time, settings: &FallingLeaves, wind: &FloraWind) -> Self {
+    /// The fall of leaves that let go now, under `wind`, in a world of `units`.
+    fn now(time: &Time, settings: &FallingLeaves, wind: &FloraWind, units: &FloraUnits) -> Self {
+        let units = units.units_per_metre;
         Self {
             now: time.elapsed_secs_wrapped(),
             rest: settings.rest,
-            drift: wind.direction.normalize_or_zero() * (wind.strength.max(0.0) * DRIFT),
+            drift: wind.direction.normalize_or_zero() * (wind.strength.max(0.0) * DRIFT * units),
+            units,
         }
     }
 }
@@ -549,7 +556,7 @@ impl BurstBuilder {
             let anchor = world.iter().sum::<Vec3>() / world.len() as f32;
             let reach = world.iter().map(|p| p.distance(anchor)).fold(0.0, f32::max);
             // The ground under where it will land: under where it hangs, then where the wind takes it.
-            let speed = rng.range(SPEED.start, SPEED.end);
+            let speed = rng.range(SPEED.start, SPEED.end) * fall.units;
             let at = anchor + origin;
             let mut landing = at.xz();
             let mut floor = ground(landing);
@@ -558,7 +565,7 @@ impl BurstBuilder {
                 floor = ground(landing);
             }
             let height = at.y - floor;
-            if height < LOWEST {
+            if height < LOWEST * fall.units {
                 continue;
             }
             let land = landing_time(height, speed);
@@ -595,7 +602,7 @@ impl BurstBuilder {
 
             // Bounds: where it hangs and where it lands, each with the card's reach and the swing.
             let landed = Vec3::new(landing.x - origin.x, local_floor, landing.y - origin.z);
-            let margin = Vec3::splat(reach + SWING);
+            let margin = Vec3::splat(reach + SWING * fall.units);
             self.lo = self.lo.min(anchor - margin).min(landed - margin);
             self.hi = self.hi.max(anchor + margin).max(landed + margin);
         }
@@ -663,6 +670,7 @@ fn smoothstep(edge: f32, x: f32) -> f32 {
 pub(crate) fn shake_leaves_loose(
     shakes: Res<TreeShakes>,
     settings: Res<FallingLeaves>,
+    units: Res<FloraUnits>,
     mut seen: Local<Vec<TreeShake>>,
     trees: Query<(Entity, &GlobalTransform), (Or<(With<TreeRender>, With<PooledTree>)>, Without<Felled>)>,
     mut drops: MessageWriter<DropLeaves>,
@@ -677,7 +685,8 @@ pub(crate) fn shake_leaves_loose(
         return;
     }
     for shake in new {
-        let radius = shake.radius.max(0.01);
+        // The shake's radius is metres, the distance to a tree world units.
+        let radius = shake.radius.max(0.01) * units.units_per_metre;
         for (tree, at) in &trees {
             let near = 1.0 - smoothstep(radius, at.translation().xz().distance(shake.at));
             let count = (settings.per_shake * shake.strength.max(0.0) * near).round() as u32;
@@ -810,9 +819,10 @@ pub(crate) fn drop_leaves(
     bursts: Query<&LeafBurst>,
     mut caches: ResMut<FallCaches>,
     fire: Option<Res<FloraFire>>,
+    units: Res<FloraUnits>,
 ) {
     let mut live: u32 = bursts.iter().map(|burst| burst.leaves).sum();
-    let fall = Fall::now(&time, &settings, &wind);
+    let fall = Fall::now(&time, &settings, &wind, &units);
     for (k, drop) in drops.read().enumerate() {
         let budget = settings.max_leaves.saturating_sub(live).min(drop.count) as usize;
         if budget == 0 {
@@ -885,6 +895,7 @@ pub(crate) fn shed_with_season(
     >,
     bursts: Query<&LeafBurst>,
     fire: Option<Res<FloraFire>>,
+    units: Res<FloraUnits>,
 ) {
     let to = season.leaf_fall.clamp(0.0, 1.0);
     let now = time.elapsed_secs_wrapped();
@@ -912,12 +923,13 @@ pub(crate) fn shed_with_season(
     state.shed = Some((to, now));
 
     let eyes: Vec<Vec3> = cameras.iter().map(GlobalTransform::translation).collect();
-    let reach = settings.autumn_distance * settings.autumn_distance;
+    let distance = units.world(settings.autumn_distance);
+    let reach = distance * distance;
     if eyes.is_empty() || reach <= 0.0 {
         return;
     }
     let mut live: u32 = bursts.iter().map(|burst| burst.leaves).sum();
-    let fall = Fall::now(&time, &settings, &wind);
+    let fall = Fall::now(&time, &settings, &wind, &units);
     let mut rng = SeededRng::from_parts(now.to_bits() as i32, 1);
     let span = to - from;
     let mut looks: HashMap<AssetId<FloraMaterial>, (Handle<FloraMaterial>, BurstBuilder)> = HashMap::default();
@@ -1104,7 +1116,7 @@ mod tests {
         let cards = leaf_cards(&oak);
         let chosen: Vec<&Card> = cards.iter().step_by(97).collect();
         let tree = GlobalTransform::from(Transform::from_xyz(4.0, 1.0, -3.0).with_scale(Vec3::splat(1.5)));
-        let fall = Fall { now: 10.0, rest: 6.0, drift: Vec2::new(0.5, 0.0) };
+        let fall = Fall { now: 10.0, rest: 6.0, drift: Vec2::new(0.5, 0.0), units: 1.0 };
         let mut rng = SeededRng::new(3);
         let mut burst = BurstBuilder::new(tree.translation());
         burst.add(&oak, chosen.iter().copied(), &tree, |_| 1.0, fall, &mut rng, |_, rng| rng.range(0.0, LET_GO));
@@ -1141,6 +1153,33 @@ mod tests {
         let tallest = anchor.iter().map(|a| a[1]).fold(0.0, f32::max);
         assert!(burst.life > landing_time(tallest, SPEED.end) + 6.0 * 0.75);
         assert!(burst.life < LET_GO + landing_time(tallest, SPEED.start) + 6.0 * 1.25 + SHRINK + 1.0e-3);
+    }
+
+    #[test]
+    fn leaves_fall_for_as_long_and_as_fast_in_a_world_of_another_unit() {
+        let oak = leaf_mesh(TreePreset::Oak);
+        let cards = leaf_cards(&oak);
+        let chosen: Vec<&Card> = cards.iter().step_by(97).collect();
+        // The same oak and the same leaves, in metres and in a world 3.2808 times as large (the
+        // tree, the ground and the wind's drift scaled; the speeds come from the units).
+        let burst_in = |k: f32| {
+            let tree = GlobalTransform::from(Transform::from_xyz(4.0 * k, k, -3.0 * k).with_scale(Vec3::splat(1.5 * k)));
+            let fall = Fall { now: 10.0, rest: 6.0, drift: Vec2::new(0.5 * k, 0.0), units: k };
+            let mut rng = SeededRng::new(3);
+            let mut burst = BurstBuilder::new(tree.translation());
+            burst.add(&oak, chosen.iter().copied(), &tree, |_| k, fall, &mut rng, |_, rng| rng.range(0.0, LET_GO));
+            burst.finish().expect("leaves above the ground")
+        };
+        let (metres, feet) = (burst_in(1.0), burst_in(3.2808));
+        assert_eq!(metres.leaves, feet.leaves, "a leaf too close to the ground to fall in one world and not the other");
+        assert!((metres.life - feet.life).abs() < 1.0e-3, "falls for {} s in metres, {} s in feet", metres.life, feet.life);
+        let speeds = |burst: &Burst| match burst.mesh.attribute(ATTRIBUTE_FALL_PATH) {
+            Some(VertexAttributeValues::Float32x4(path)) => path.iter().map(|p| p[3]).collect::<Vec<f32>>(),
+            _ => panic!("no paths"),
+        };
+        for (m, f) in speeds(&metres).into_iter().zip(speeds(&feet)) {
+            assert!(SPEED.contains(&m) && (f / m - 3.2808).abs() < 1.0e-4, "{m} m/s fell at {f} ft/s");
+        }
     }
 
     fn app() -> bevy::app::App {

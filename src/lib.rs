@@ -114,6 +114,24 @@
 //! a slope all round instead of floating on its downhill side, and as a resource it is what
 //! felled trees are cut above and land on; see [`ground`].
 //!
+//! # A world that is not in metres: [`FloraUnits`]
+//!
+//! Trees are built in metres and a game scales them to its world with a `Transform`. If the world's
+//! unit is not the metre (a foot, say), insert [`FloraUnits`] with the number of world units to a
+//! metre, and everything the crate measures in the world follows it: how fast a tree falls and a
+//! leaf drifts, how wide a gust is, how far a fire reaches, the pusher's size, the see-through
+//! radius and the distances the levels of detail change at. Fields documented as metres are
+//! scaled by it; positions and sizes that address the world are in world units; see [`units`].
+//!
+//! ```rust,no_run
+//! use bevy::prelude::*;
+//! use bevy_flora::FloraUnits;
+//!
+//! fn setup(mut commands: Commands) {
+//!     commands.insert_resource(FloraUnits { units_per_metre: 3.2808 });
+//! }
+//! ```
+//!
 //! # Leaf shading and wind
 //!
 //! The plugin draws trees with [`FloraMaterial`]: a darker, glossier upper side of
@@ -395,6 +413,7 @@ pub mod skeleton;
 pub mod shape;
 mod textures;
 pub mod tree_asset;
+pub mod units;
 pub mod venation;
 
 pub use background::BuildInBackground;
@@ -437,6 +456,7 @@ pub use shape::{TreeShape, WoodCapsule};
 pub use tree_asset::ProceduralTreeAsset;
 #[cfg(feature = "ron")]
 pub use tree_asset::{TreeFileError, TreeParamsLoader};
+pub use units::FloraUnits;
 pub use skeleton::{Node, NodeKind, Skeleton, generate_skeleton};
 
 /// What a game usually needs, in one `use bevy_flora::prelude::*;`: the plugin, the tree, pool and
@@ -445,7 +465,7 @@ pub use skeleton::{Node, NodeKind, Skeleton, generate_skeleton};
 pub mod prelude {
     pub use crate::{
         BarkParams, BarkScan, BuckTree, BuildInBackground, DropLeaves, FallingLeaves, FellTree, Felled, FloraFire,
-        FloraGround, FloraIndex, FloraPlugin, FloraSeason, FloraWetness, FloraWind, FoliageParams, FoliagePusher,
+        FloraGround, FloraIndex, FloraPlugin, FloraSeason, FloraUnits, FloraWetness, FloraWind, FoliageParams, FoliagePusher,
         Burnt, FallenFruit, FallingFruit, FruitFell, FruitParams, TreeBurnt, TreeFruit,
         GpuGrowth, Growing, GustFront,
         LeafBurst, LeafScan, LodDistances, LodScale, LodSettings, PoolColors, PooledLook, PooledTree, ProceduralTree,

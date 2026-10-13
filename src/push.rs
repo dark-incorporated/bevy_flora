@@ -37,16 +37,20 @@ use bevy::transform::components::GlobalTransform;
 use crate::gpu::GrowthMaterial;
 use crate::see_through::{SEE_THROUGH_SLOT, SEE_THROUGH_VECTORS};
 use crate::shading::{FloraMaterial, FloraWindBuffer};
+use crate::units::FloraUnits;
 
 /// A body that pushes foliage aside as it moves through it: put it on an entity with a transform
 /// (its translation is the middle of the body). Leaves and thin stems within `radius` of it, and
-/// within its height, bend out of its way; see the [module](crate::push).
+/// within its height, bend out of its way; see the [module](crate::push). `radius` and `height`
+/// are metres: [`FloraUnits`] scales them to the world's unit.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Reflect)]
 #[reflect(Component)]
 pub struct FoliagePusher {
-    /// How far round the body is, metres: what is nearer its axis is pushed out to about here.
+    /// How far round the body is, metres ([`FloraUnits`] scales it to the world): what is nearer
+    /// its axis is pushed out to about here.
     pub radius: f32,
-    /// How tall the body is, metres, centred on its translation.
+    /// How tall the body is, metres ([`FloraUnits`] scales it to the world), centred on its
+    /// translation.
     pub height: f32,
     /// How far foliage gives way, 0..1: 1 out of the body, 0.5 halfway.
     pub strength: f32,
@@ -102,8 +106,10 @@ impl Trails {
 
 /// Write the pushers nearest the camera into the shared buffer, in place, when they moved: each as
 /// it is and as it was over the last half second.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sync_pushers(
     pushers: Query<(Entity, &FoliagePusher, &GlobalTransform)>,
+    units: Res<FloraUnits>,
     cameras: Query<&GlobalTransform, With<Camera3d>>,
     time: Res<Time>,
     mut trails: Local<Trails>,
@@ -127,12 +133,14 @@ pub(crate) fn sync_pushers(
     nearest.sort_by(|a, b| a.2.total_cmp(&b.2));
     let mut packed = PushSlots::default();
     let mut count = 0;
+    let metre = units.units_per_metre;
     for (entity, pusher, _) in nearest.into_iter().take(MAX_PUSHERS) {
         let Some(trail) = trails.0.get(&entity) else { continue };
         for (k, weight) in TRAIL_WEIGHTS.iter().enumerate() {
             let at = Trails::at(trail, now, k as f32 * TRAIL_STEP);
-            packed.0[1 + 2 * count] = [at.x, at.y, at.z, pusher.radius.max(0.0)];
-            packed.0[2 + 2 * count] = [0.5 * pusher.height.max(0.0), pusher.strength.clamp(0.0, 1.0) * weight, 0.0, 0.0];
+            packed.0[1 + 2 * count] = [at.x, at.y, at.z, pusher.radius.max(0.0) * metre];
+            packed.0[2 + 2 * count] =
+                [0.5 * pusher.height.max(0.0) * metre, pusher.strength.clamp(0.0, 1.0) * weight, 0.0, 0.0];
             count += 1;
         }
     }
@@ -261,5 +269,40 @@ mod tests {
         app.update();
         assert!(armed(&app).iter().all(|on| !on), "on with no pusher left");
         assert_eq!(slots(&app)[0][0], 0.0);
+    }
+
+    #[test]
+    fn the_default_pusher_covers_the_same_share_of_a_shrub_in_a_world_in_feet() {
+        const FEET: f32 = 3.2808;
+        let shrub = crate::build_tree(&TreePreset::Shrub.params(), f32::INFINITY);
+        let points: Vec<Vec3> = shrub.trunk.positions.iter().chain(&shrub.foliage.positions).copied().collect();
+        // The shrub at the origin and a default body (0.45 m round, 1.8 m tall) at its side, in a
+        // world `world` times the metre's size that the plugin is told is `units` to the metre:
+        // what the shader's reach test (`push_offset`) takes from the buffer, the samples within
+        // 1.5 radii across the ground and half a radius past the body's ends.
+        let share = |world: f32, units: f32| {
+            let mut app = app();
+            app.insert_resource(FloraUnits { units_per_metre: units });
+            let at = Vec3::new(0.4 * world, 0.9 * world, 0.0);
+            app.world_mut().spawn((FoliagePusher::default(), GlobalTransform::from_translation(at)));
+            app.update();
+            let s = slots(&app);
+            let (body, half_height) = (s[1], s[2][0]);
+            let covered = points
+                .iter()
+                .map(|p| *p * world)
+                .filter(|p| {
+                    let across = (Vec2::new(p.x, p.z) - Vec2::new(body[0], body[2])).length();
+                    across < 1.5 * body[3] && (p.y - body[1]).abs() - half_height < 0.5 * body[3]
+                })
+                .count();
+            covered as f32 / points.len() as f32
+        };
+        let (metres, feet) = (share(1.0, 1.0), share(FEET, FEET));
+        assert!(metres > 0.02 && metres < 0.98, "the body covers {metres} of the shrub: not a test of anything");
+        assert!((metres - feet).abs() < 1.0e-3, "{metres} of the shrub in metres, {feet} in feet");
+        // Told nothing of the unit, the same body is 3.2808 times too small for the shrub.
+        let unaware = share(FEET, 1.0);
+        assert!(unaware < metres * 0.8, "an unaware body covers {unaware} of the shrub, {metres} in metres");
     }
 }

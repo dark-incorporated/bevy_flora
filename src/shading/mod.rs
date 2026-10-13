@@ -51,6 +51,7 @@ use crate::mesh::ATTRIBUTE_LEAF_SWAY;
 use crate::params::{CrownStyle, LeafStyle, RenderStyle, TreeParams};
 use crate::push::{PUSH_SLOT, PUSH_VECTORS, PushSlots};
 use crate::see_through::{SEE_THROUGH_SLOT, SEE_THROUGH_VECTORS, SeeThroughCapsule};
+use crate::units::FloraUnits;
 
 mod share;
 pub use share::SharedFlora;
@@ -59,7 +60,9 @@ mod textures;
 pub use textures::{BarkTexture, FloraTextures, LeafTexture, TextureLibrary};
 
 /// A gust that sweeps across the world: a band of stronger wind, `width` metres deep, moving
-/// along `direction` at `speed`. Launch it with [`FloraWind::launch_gust`].
+/// along `direction` at `speed`. Launch it with [`FloraWind::launch_gust`]. `speed` and `width`
+/// are metres, scaled to the world by [`FloraUnits`]; `origin` is a position,
+/// in world units.
 ///
 /// Trees lean along `direction` and flutter harder while the band is over them, most at its
 /// centre. The band has no sides: it reaches every tree it passes, however far to the side of
@@ -71,9 +74,10 @@ pub struct GustFront {
     /// Which way it travels and pushes the trees, world x and z; normalised when used. Zero
     /// turns it off.
     pub direction: Vec2,
-    /// Metres per second.
+    /// Metres per second ([`FloraUnits`] scales it to the world's unit).
     pub speed: f32,
-    /// Depth of the band of strong wind, metres (at least 0.01).
+    /// Depth of the band of strong wind, metres (at least 0.01; scaled by
+    /// [`FloraUnits`]).
     pub width: f32,
     /// Wind strength added at the front's peak, on the scale of [`FloraWind::strength`].
     pub strength: f32,
@@ -167,8 +171,9 @@ impl FloraWind {
 pub struct TreeShake {
     /// Where it happens, on the ground: world x and z.
     pub at: Vec2,
-    /// Trees whose trunks stand closer to `at` than this many metres shake (at least 0.01): about
-    /// a metre singles out the tree that was hit, tens of metres reach a whole grove.
+    /// Trees whose trunks stand closer to `at` than this many metres shake (at least 0.01; scaled
+    /// to the world by [`FloraUnits`]): about a metre singles out the tree that was hit, tens of
+    /// metres reach a whole grove.
     pub radius: f32,
     /// How far the trees swing, on the scale of [`FloraWind::strength`]: 1 leans a tree about as
     /// far as a strong wind does, before the swing dies away. Negative is treated as 0.
@@ -439,24 +444,29 @@ pub(crate) const WIND_VECTORS: usize = 7 + 2 * TreeShakes::MAX + SEE_THROUGH_VEC
 /// The shared buffer's slot whose third lane holds [`FloraWetness`] (`sync_wind` writes it).
 pub(crate) const WETNESS_SLOT: usize = 2;
 
+/// The shared buffer's slot (the same one) whose fourth lane holds [`FloraUnits::units_per_metre`]
+/// (`wind_vectors` packs it). `common.wesl`'s `UNITS` is this number.
+pub(crate) const UNITS_SLOT: usize = 2;
+
 /// The `Vec4`s of [`FloraWind`], [`FloraSeason`] and [`TreeShakes`] the shaders read, in the order
 /// of the shared buffer: `wind` (direction x, direction z, strength, speed), `motion` (bend,
 /// flutter, gust strength, turbulence), `rate` (gust frequency, flutter frequency, the
-/// [`FloraWetness`] `sync_wind` puts there (0 here), 0), `front` (origin x, origin z, direction x,
-/// direction z), `front_shape` (speed, width, strength, start time), `season` (autumn, leaf fall,
-/// snow, blossom), the shakes' header (the render time the last of them ends, -1 without any, 0,
-/// 0) and two per shake slot, (at x, at z, radius, strength) and (direction x, direction z, start,
-/// duration), all zero for an empty slot. `front` and `front_shape` are zero without a
-/// [`GustFront`], or with one that has no direction. Directions are normalised and every value
-/// clamped to what the shaders can use.
-pub(crate) fn wind_vectors(wind: &FloraWind, season: &FloraSeason, shakes: &TreeShakes) -> [Vec4; WIND_VECTORS] {
+/// [`FloraWetness`] `sync_wind` puts there (0 here), `units`, the world units to a metre), `front`
+/// (origin x, origin z, direction x, direction z), `front_shape` (speed, width, strength, start
+/// time), `season` (autumn, leaf fall, snow, blossom), the shakes' header (the render time the last
+/// of them ends, -1 without any, 0, 0) and two per shake slot, (at x, at z, radius, strength) and
+/// (direction x, direction z, start, duration), all zero for an empty slot. `front` and
+/// `front_shape` are zero without a [`GustFront`], or with one that has no direction. Directions
+/// are normalised and every value clamped to what the shaders can use. The metres the weather is
+/// given in (a gust's speed and width, a shake's radius) are packed in world units: times `units`.
+pub(crate) fn wind_vectors(wind: &FloraWind, season: &FloraSeason, shakes: &TreeShakes, units: f32) -> [Vec4; WIND_VECTORS] {
     let d = wind.direction.normalize_or_zero();
     let (front, front_shape) = match wind.gust {
         Some(gust) if gust.direction.normalize_or_zero() != Vec2::ZERO => {
             let d = gust.direction.normalize_or_zero();
             (
                 Vec4::new(gust.origin.x, gust.origin.y, d.x, d.y),
-                Vec4::new(gust.speed.max(0.0), gust.width.max(0.01), gust.strength.max(0.0), gust.start),
+                Vec4::new(gust.speed.max(0.0) * units, gust.width.max(0.01) * units, gust.strength.max(0.0), gust.start),
             )
         }
         _ => (Vec4::ZERO, Vec4::ZERO),
@@ -482,11 +492,12 @@ pub(crate) fn wind_vectors(wind: &FloraWind, season: &FloraSeason, shakes: &Tree
     for (i, shake) in live.enumerate() {
         let duration = shake.duration.max(0.01);
         let dir = shake.direction.normalize_or_zero();
-        packed[7 + 2 * i] = Vec4::new(shake.at.x, shake.at.y, shake.radius.max(0.01), shake.strength);
+        packed[7 + 2 * i] = Vec4::new(shake.at.x, shake.at.y, shake.radius.max(0.01) * units, shake.strength);
         packed[8 + 2 * i] = Vec4::new(dir.x, dir.y, shake.start, duration);
         last_end = last_end.max(shake.start + duration);
     }
     packed[6] = Vec4::new(last_end, 0.0, 0.0, 0.0);
+    packed[UNITS_SLOT].w = units;
     packed
 }
 
@@ -838,8 +849,9 @@ impl FloraWindBuffer {
         season: &FloraSeason,
         shakes: &TreeShakes,
         wetness: &FloraWetness,
+        units: &FloraUnits,
     ) -> Self {
-        let mut packed = wind_vectors(wind, season, shakes).map(|v| v.to_array());
+        let mut packed = wind_vectors(wind, season, shakes, units.units_per_metre).map(|v| v.to_array());
         packed[WETNESS_SLOT][2] = wetness.amount();
         Self(buffers.add(ShaderBuffer::from(shared_vectors(&packed))))
     }
@@ -875,21 +887,22 @@ pub(crate) fn detect_flora_support(
     }
 }
 
-/// Write [`FloraWind`], [`FloraSeason`], [`FloraWetness`] and [`TreeShakes`] into the shared
-/// buffer, in place. Runs when any of them changed. Only their slots: the fire's grid after them
-/// ([`FloraFire`](crate::FloraFire)) is `fire::sync_fire`'s.
+/// Write [`FloraWind`], [`FloraSeason`], [`FloraWetness`], [`TreeShakes`] and [`FloraUnits`] into
+/// the shared buffer, in place. Runs when any of them changed. Only their slots: the fire's grid
+/// after them ([`FloraFire`](crate::FloraFire)) is `fire::sync_fire`'s.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn sync_wind(
     wind: Res<FloraWind>,
     season: Res<FloraSeason>,
     wetness: Res<FloraWetness>,
     shakes: Res<TreeShakes>,
+    units: Res<FloraUnits>,
     capsule: Res<SeeThroughCapsule>,
     push: Res<PushSlots>,
     buffer: Res<FloraWindBuffer>,
     mut buffers: ResMut<Assets<ShaderBuffer>>,
 ) {
-    let mut packed = wind_vectors(&wind, &season, &shakes).map(|v| v.to_array());
+    let mut packed = wind_vectors(&wind, &season, &shakes, units.units_per_metre).map(|v| v.to_array());
     packed[WETNESS_SLOT][2] = wetness.amount();
     // The see-through fade's slots are written by `sync_see_through`; keep them.
     for (i, vector) in capsule.0.iter().enumerate() {
@@ -992,12 +1005,14 @@ fn add_wind_buffer(app: &mut App) {
     let season = *app.world().resource::<FloraSeason>();
     let shakes = app.world().resource::<TreeShakes>().clone();
     let wetness = *app.world().resource::<FloraWetness>();
+    let units = *app.world().resource::<FloraUnits>();
     let buffer = FloraWindBuffer::new(
         &mut app.world_mut().resource_mut::<Assets<ShaderBuffer>>(),
         &wind,
         &season,
         &shakes,
         &wetness,
+        &units,
     );
     app.insert_resource(buffer);
 }
@@ -1025,6 +1040,21 @@ fn add_shaders(app: &mut App) {
 
 #[cfg(test)]
 mod tests {
+    /// `common.wesl` spells the buffer's slots as literals: they must be the Rust constants.
+    #[test]
+    fn the_shaders_slots_are_the_buffers_slots() {
+        let source = include_str!("common.wesl");
+        let literal = |name: &str| -> usize {
+            let at = source.find(&format!("const {name}: u32 = ")).unwrap_or_else(|| panic!("no {name}"));
+            let rest = &source[at + format!("const {name}: u32 = ").len()..];
+            rest[..rest.find("u;").expect("a u32 literal")].parse().expect("a number")
+        };
+        assert_eq!(literal("UNITS"), UNITS_SLOT);
+        assert_eq!(literal("SEE_THROUGH"), SEE_THROUGH_SLOT);
+        assert_eq!(literal("PUSH"), PUSH_SLOT);
+        assert_eq!(literal("FIRE"), crate::fire::FIRE_SLOT);
+    }
+
     use std::time::Duration;
 
     use bevy::math::Vec3;
@@ -1149,17 +1179,17 @@ mod tests {
             gust: None,
         };
         let [wind, motion, rate, front, front_shape, season, ..] =
-            wind_vectors(&gale, &FloraSeason { autumn: 2.0, leaf_fall: -1.0, snow: 3.0, blossom: 4.0 }, &TreeShakes::default());
+            wind_vectors(&gale, &FloraSeason { autumn: 2.0, leaf_fall: -1.0, snow: 3.0, blossom: 4.0 }, &TreeShakes::default(), 1.0);
         // Direction normalised, a negative speed stopped, strength not capped, the rest clamped.
         assert_eq!(wind, Vec4::new(0.0, -1.0, 7.0, 0.0));
         assert_eq!(motion, Vec4::new(3.0, 2.0, 1.0, 0.0));
-        assert_eq!(rate, Vec4::new(0.5, 4.0, 0.0, 0.0));
+        assert_eq!(rate, Vec4::new(0.5, 4.0, 0.0, 1.0), "the units are the fourth lane");
         assert_eq!((front, front_shape), (Vec4::ZERO, Vec4::ZERO));
         assert_eq!(season, Vec4::new(1.0, 0.0, 1.0, 1.0), "the season is clamped to 0..1");
         let (calm, still) = (FloraSeason::default(), TreeShakes::default());
         assert_ne!(
-            wind_vectors(&FloraWind { strength: 0.0, ..gale }, &calm, &still),
-            wind_vectors(&gale, &calm, &still)
+            wind_vectors(&FloraWind { strength: 0.0, ..gale }, &calm, &still, 1.0),
+            wind_vectors(&gale, &calm, &still, 1.0)
         );
     }
 
@@ -1167,7 +1197,7 @@ mod tests {
     fn gust_front_is_packed_normalised_and_off_when_absent() {
         let pack = |gust: Option<GustFront>| {
             let [_, _, _, front, front_shape, ..] =
-                wind_vectors(&FloraWind { gust, ..Default::default() }, &FloraSeason::default(), &TreeShakes::default());
+                wind_vectors(&FloraWind { gust, ..Default::default() }, &FloraSeason::default(), &TreeShakes::default(), 1.0);
             (front, front_shape)
         };
 
@@ -1292,7 +1322,7 @@ mod tests {
         let front = wind.gust.expect("the gust was launched");
         assert_eq!(front.start, time.elapsed_secs_wrapped());
         assert_eq!(front.start, 5.0);
-        let [_, _, _, _, front_shape, ..] = wind_vectors(&wind, &FloraSeason::default(), &TreeShakes::default());
+        let [_, _, _, _, front_shape, ..] = wind_vectors(&wind, &FloraSeason::default(), &TreeShakes::default(), 1.0);
         assert_eq!(front_shape.w, 5.0);
     }
 
@@ -1301,7 +1331,7 @@ mod tests {
         let mut time = Time::<()>::default();
         time.advance_by(Duration::from_secs_f32(10.0));
         let calm = (FloraWind::default(), FloraSeason::default());
-        let pack = |shakes: &TreeShakes| wind_vectors(&calm.0, &calm.1, shakes);
+        let pack = |shakes: &TreeShakes| wind_vectors(&calm.0, &calm.1, shakes, 1.0);
 
         // Nothing shaking: the header says so, and every slot is empty.
         let none = pack(&TreeShakes::default());
@@ -1335,5 +1365,27 @@ mod tests {
         assert!(!durations.contains(&10.0), "the shortest-lived shake should have made room: {durations:?}");
         assert!(full.iter().any(|s| s.at.x == 99.0 && s.start == 11.0));
         assert_eq!(pack(&full)[6].x, 10.0 + 17.0, "the longest still ends last");
+    }
+
+    #[test]
+    fn a_world_in_other_units_packs_the_weather_in_world_units() {
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_secs_f32(2.0));
+        let gust = GustFront { origin: Vec2::new(5.0, 6.0), direction: Vec2::X, speed: 15.0, width: 30.0, ..Default::default() };
+        let wind = FloraWind { gust: Some(gust), ..Default::default() };
+        let mut shakes = TreeShakes::default();
+        shakes.shake(TreeShake { at: Vec2::new(1.0, 2.0), radius: 3.0, ..Default::default() }, &time);
+        let pack = |units: f32| wind_vectors(&wind, &FloraSeason::default(), &shakes, units);
+        let (metres, feet) = (pack(1.0), pack(3.2808));
+        // Metres become world units: a gust's speed and width, a shake's radius, and the unit
+        // itself for the shaders to scale what they size (a pusher's reach, a falling leaf's drift).
+        assert!((feet[4].x - 15.0 * 3.2808).abs() < 1.0e-3 && (feet[4].y - 30.0 * 3.2808).abs() < 1.0e-3);
+        assert!((feet[7].z - 3.0 * 3.2808).abs() < 1.0e-4);
+        assert_eq!((metres[2].w, feet[2].w), (1.0, 3.2808));
+        // Where things are is already in world units, and so is the rest: nothing else moves.
+        assert_eq!((feet[3], feet[7].x, feet[7].y, feet[7].w), (metres[3], 1.0, 2.0, 1.0));
+        for slot in [0, 1, 5, 6, 8] {
+            assert_eq!(feet[slot], metres[slot], "slot {slot}");
+        }
     }
 }

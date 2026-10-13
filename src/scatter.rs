@@ -52,7 +52,7 @@ const GROVE_BEND: f32 = 0.5;
 pub struct Scatter {
     /// The ground to cover: world x along the rectangle's x, world z along its y.
     pub area: Rect,
-    /// The least distance between two trunks, in metres. Trees fill the area as densely as that
+    /// The least distance between two trunks, in world units. Trees fill the area as densely as that
     /// allows: about `0.7 * area / spacing²` of them.
     pub spacing: f32,
     /// The same seed gives the same forest; another gives another.
@@ -60,7 +60,7 @@ pub struct Scatter {
     /// The relative share of each species, by index (yours: an index into your pools). Empty
     /// means one species, `0`; a weight of 0 or less is never picked.
     pub species: Vec<f32>,
-    /// How wide a grove of one species grows, in metres. At 0 every tree draws its own species;
+    /// How wide a grove of one species grows, in world units. At 0 every tree draws its own species;
     /// above it, the area is cut into groves about this wide (with ragged edges), each of one
     /// species drawn by the weights, so a forest reads as stands of birch among the oaks.
     pub grove_size: f32,
@@ -69,7 +69,7 @@ pub struct Scatter {
 }
 
 impl Scatter {
-    /// One species over `area`, trunks at least `spacing` metres apart, sizes from 0.85 to 1.15,
+    /// One species over `area`, trunks at least `spacing` world units apart, sizes from 0.85 to 1.15,
     /// seed 0.
     pub fn new(area: Rect, spacing: f32) -> Self {
         Self { area, spacing, seed: 0, species: Vec::new(), grove_size: 0.0, scale: (0.85, 1.15) }
