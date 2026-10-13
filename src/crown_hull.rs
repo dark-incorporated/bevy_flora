@@ -218,7 +218,7 @@ pub fn crown_triangles(cloud: &[Vec3], trunk_top: f32, spec: HullSpec, seed: i32
 pub(crate) fn hull_spruce() -> crate::params::TreeParams {
     use crate::params::{CrownStyle, TrunkStyle};
     let mut params = crate::presets::TreePreset::Spruce.params();
-    params.crown = CrownStyle::Hull { tiers: 5, sides: 7, lift: 0.2, jitter: 1.0 };
+    params.crown = CrownStyle::Hull { tiers: 5, sides: 7, lift: 0.2, jitter: 1.0, trunk_only: true };
     params.trunk_style = TrunkStyle::Prism { sides: 5 };
     params
 }

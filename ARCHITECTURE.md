@@ -60,7 +60,7 @@ with a plain `StandardMaterial`, just without the leaf shader.
 `TreeParams::crown` (`CrownStyle`) and `TreeParams::trunk_style` (`TrunkStyle`) draw a low-poly conifer: both default to
 `Leaves` and `Round`, which every preset keeps, and change nothing else of a tree.
 
-- **The hull** (`CrownStyle::Hull { tiers, sides, lift, jitter }`) replaces the leaf cards; fruit and flowers are drawn as
+- **The hull** (`CrownStyle::Hull { tiers, sides, lift, jitter, trunk_only }`) replaces the leaf cards; fruit and flowers are drawn as
   ever. `build_foliage` takes a `Crown`: with a hull it skips each point's cards, colour and sway, keeps the rest (fruit,
   flowers, `shade_crown` for those) and appends the hull's mesh last. The pure module `crown_hull.rs` builds the hull from
   the cloud `foliage::hull_cloud` makes of every leaf's position and tip (`position + up * size`): the cloud is cut into
@@ -71,6 +71,7 @@ with a plain `StandardMaterial`, just without the leaf shader.
   so a hull depends on age only through the cloud. Each ring is a cone: `sides` side faces to an apex 0.55 of a band above
   the band's top (the top tier's apex is the crown's top) and `sides` underside faces to a point 0.35 of a band above the
   ring. No hull under 8 cloud points or 0.5 m.
+- **`trunk_only`** draws the wood as the trunk and its leader (`skeleton_mesh_inner` skips every other node); `pipeline::trunk_top` is the top of that chain, so the hull's apex covers the leader's tip.
 - **Its vertices** are flat: three to a facet, the face's normal, uv0 (0.5, 0.5), uv1 (1, 1) (snow's shelter needs y = 1),
   the leaf colour formula (`leaf_colour`) from draws of the facet's own (`seed ^ HULL_FACET_SALT`, tier, side, under) and a
   sway of `(0, 0, 0, phase)` with one phase for the side face and the underside face on the same two ring points

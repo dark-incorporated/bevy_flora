@@ -75,10 +75,16 @@ pub(crate) fn build_aged(full: &Skeleton, params: &TreeParams, age: f32) -> Tree
     }
 }
 
-/// Where the trunk ends: its start's height plus its length. A hull crown
+/// Where the trunk chain ends: the top of the trunk or of its leader. A hull crown
 /// ([`CrownStyle::Hull`](crate::CrownStyle)) is never lower than this.
 pub(crate) fn trunk_top(skeleton: &Skeleton) -> f32 {
-    skeleton.nodes.first().map_or(0.0, |trunk| trunk.start.y + trunk.length)
+    skeleton
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| matches!(node.kind, crate::skeleton::NodeKind::Trunk | crate::skeleton::NodeKind::Leader))
+        .map(|(i, _)| skeleton.end(i).y)
+        .fold(0.0, f32::max)
 }
 
 #[cfg(test)]

@@ -435,7 +435,7 @@ fn scenarios() -> Vec<Scenario> {
         ("hull_cypress", preset(TreePreset::Cypress), 3, 5),
     ] {
         let mut params = params;
-        params.crown = CrownStyle::Hull { tiers, sides, lift: 0.2, jitter: 1.0 };
+        params.crown = CrownStyle::Hull { tiers, sides, lift: 0.2, jitter: 1.0, trunk_only: true };
         params.trunk_style = TrunkStyle::Prism { sides: 5 };
         for age in [inf, 2.0, 5.0] {
             list.push(Scenario { name: format!("{name}_{age}"), params: params.clone(), age, season: FloraSeason::SUMMER });

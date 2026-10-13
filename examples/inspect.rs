@@ -10,7 +10,7 @@
 //!     [--fell <deg> [--buck <m>] [--lying]] [--slope <deg>] [--on-centre] [--drop <count>[,<after>[,<every>]]]
 //!     [--autumn <seconds>[,<after>[,<every>]]] [--burn <after>[,<every>]]
 //!     [--push <x>,<z>[,<radius>[,<vx>,<vz>]]] [--notch <deg>,<depth>[,<height>]]
-//!     [--hull <tiers>,<sides>[,<lift>[,<jitter>]]] [--prism <sides>]
+//!     [--hull <tiers>,<sides>[,<lift>[,<jitter>]]] [--prism <sides>] [--branches]
 //! ```
 //!
 //! The tree stands at the origin; the camera stands `--distance` metres away on the bearing
@@ -62,7 +62,8 @@
 //! (radius 0.45 m by default), and walks it at (vx, vz) m/s once the tree is ready, photographed
 //! every quarter of a second: the leaves and thin stems it walks through give way.
 //!
-//! `--hull <tiers>,<sides>[,<lift>[,<jitter>]]` draws the crown as a faceted hull of that many
+//! `--hull <tiers>,<sides>[,<lift>[,<jitter>]]` (with `--branches`: every branch drawn, not the trunk
+//! chain only, `CrownStyle::Hull::trunk_only`) draws the crown as a faceted hull of that many
 //! stacked cones ([`CrownStyle::Hull`](bevy_flora::CrownStyle), lift 0.2 and jitter 1 by default)
 //! and `--prism <sides>` the wood as flat-shaded prisms ([`TrunkStyle::Prism`](bevy_flora::TrunkStyle)):
 //! `--preset spruce --hull 5,7 --prism 5` is the stylised winter conifer, and every other option
@@ -164,6 +165,8 @@ struct Args {
     hull: Option<(u32, u32, f32, f32)>,
     /// A prism trunk with this many sides (`TrunkStyle::Prism`).
     prism: Option<u32>,
+    /// With `--hull`: draw every branch, not the trunk chain only.
+    branches: Option<()>,
 }
 
 fn usage() -> ! {
@@ -175,7 +178,7 @@ fn usage() -> ! {
          [--colliders] [--season <autumn>,<leaf fall>[,<snow>[,<blossom>]]] [--wet <0..1>] [--fell <deg> [--buck <m>] [--lying]] [--slope <deg>] \
          [--on-centre] [--drop <count>[,<after>[,<every>]]] [--autumn <seconds>[,<after>[,<every>]]] \
          [--burn <after>[,<every>]] [--push <x>,<z>[,<radius>[,<vx>,<vz>]]] [--notch <deg>,<depth>[,<height>]] \
-         [--hull <tiers>,<sides>[,<lift>[,<jitter>]]] [--prism <sides>]"
+         [--hull <tiers>,<sides>[,<lift>[,<jitter>]]] [--prism <sides>] [--branches]"
     );
     std::process::exit(2);
 }
@@ -222,6 +225,7 @@ fn parse_args() -> Args {
         notch: None,
         hull: None,
         prism: None,
+        branches: None,
     };
     let mut have_out = false;
     let mut it = std::env::args().skip(1).peekable();
@@ -350,6 +354,7 @@ fn parse_args() -> Args {
                     _ => usage(),
                 };
             }
+            "--branches" => args.branches = Some(()),
             "--prism" => args.prism = Some(value(&mut it)),
             "--notch" => {
                 let p = floats(&it.next().unwrap_or_else(|| usage()));
@@ -541,7 +546,7 @@ fn setup(
     params.seed = shoot.args.seed;
     params.style = shoot.args.style;
     if let Some((tiers, sides, lift, jitter)) = shoot.args.hull {
-        params.crown = CrownStyle::Hull { tiers, sides, lift, jitter };
+        params.crown = CrownStyle::Hull { tiers, sides, lift, jitter, trunk_only: shoot.args.branches.is_none() };
     }
     if let Some(sides) = shoot.args.prism {
         params.trunk_style = TrunkStyle::Prism { sides };

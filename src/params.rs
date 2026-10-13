@@ -675,6 +675,12 @@ pub enum CrownStyle {
         /// How far each tier's ring is knocked about, 0 (regular cones) to 1: the ring's radius
         /// by up to 16%, its height by up to 12% of a tier, and each tier's turn.
         jitter: f32,
+        /// Draw the tree's wood as its trunk chain only (the trunk and its leader, no side
+        /// branches), which the crown hides in a stylised conifer: a few dozen triangles instead
+        /// of thousands, and no twig poking out of a facet. The tree's skeleton keeps its
+        /// branches (limbs it rests on when felled, its shape, its fire fuel); only the mesh
+        /// leaves them out. `false` draws every branch.
+        trunk_only: bool,
     },
 }
 

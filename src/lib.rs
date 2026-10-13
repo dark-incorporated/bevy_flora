@@ -175,7 +175,7 @@
 //! # Low-poly conifers: hull crowns and prism trunks
 //!
 //! [`TreeParams::crown`] ([`CrownStyle`]) can draw the crown as one faceted hull instead of leaf
-//! cards: `CrownStyle::Hull { tiers, sides, lift, jitter }` wraps a stack of cones round the leaf
+//! cards: `CrownStyle::Hull { tiers, sides, lift, jitter, trunk_only }` wraps a stack of cones round the leaf
 //! cloud ([`crown_hull`]), `tiers * sides * 2` flat triangles that read as a few big planes.
 //! [`TreeParams::trunk_style`] ([`TrunkStyle`]) meshes the wood as flat-shaded prisms. Both work
 //! through every way a tree is drawn (pools, levels of detail, impostors, felling, fire, snow) but

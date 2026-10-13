@@ -497,7 +497,7 @@ fn toon_oak() -> bevy_flora::TreeParams {
 
 ### Low-poly conifers: `CrownStyle::Hull` and `TrunkStyle::Prism`
 
-A game that draws its forest as a few big flat planes does not want leaf cards. `TreeParams::crown` set to `CrownStyle::Hull { tiers, sides, lift, jitter }` draws the crown as one faceted hull instead: a stack of `tiers` cones of `sides` facets each, wrapped round the tree's leaf cloud (each cone as wide as the 90th percentile of the leaves in its band, never wider than the one below), `tiers * sides * 2` flat triangles in all. `lift` keeps the crown at least that share of the tree's height above the root, so a trunk shows under it and a body can walk beneath, and `jitter` (0 to 1) knocks the rings about so no two trees are the same. `TreeParams::trunk_style` set to `TrunkStyle::Prism { sides }` meshes the wood as flat-shaded prisms with that many faces. Both default to leaf cards and a round trunk, which every preset keeps.
+A game that draws its forest as a few big flat planes does not want leaf cards. `TreeParams::crown` set to `CrownStyle::Hull { tiers, sides, lift, jitter, trunk_only }` draws the crown as one faceted hull instead: a stack of `tiers` cones of `sides` facets each, wrapped round the tree's leaf cloud (each cone as wide as the 90th percentile of the leaves in its band, never wider than the one below), `tiers * sides * 2` flat triangles in all. `lift` keeps the crown at least that share of the tree's height above the root, so a trunk shows under it and a body can walk beneath, and `jitter` (0 to 1) knocks the rings about so no two trees are the same. `TreeParams::trunk_style` set to `TrunkStyle::Prism { sides }` meshes the wood as flat-shaded prisms with that many faces. `trunk_only` (the low-poly look) draws the wood of a hull tree as its trunk chain only (the trunk and its leader: a few dozen triangles, no twig poking out of a facet); the skeleton keeps its branches, so felling, shape and fire are unchanged, and `false` draws every branch. Both default to leaf cards and a round trunk, which every preset keeps.
 
 The hull is lit matte and flat: no veins, no light through it, no scan; snow lies on the facets that face up. It works through everything else a tree does: pools take it (the coarse levels keep `LodSettings::hull_detail` of its tiers and sides, default 1.0, 0.7 and 0.5, inside level 0's bounds), impostors bake it, a prism trunk is notched, felled and bucked, fire chars it and burns its facets away, and a shake or a landing sheds chips of it (96 small triangles in its facets' colours), not whole facets. Its colours and phases are fixed by the seed and the facet, so they never change as the tree grows. It is built on the CPU: `GpuGrowth` on such a tree is ignored with a warning (`TreeParams::gpu_growable`).
 
@@ -507,7 +507,7 @@ use bevy_flora::{CrownStyle, TreePreset, TrunkStyle};
 // The spruce as a five-tier, seven-sided cone stack on a five-sided trunk.
 fn winter_spruce() -> bevy_flora::TreeParams {
     let mut params = TreePreset::Spruce.params();
-    params.crown = CrownStyle::Hull { tiers: 5, sides: 7, lift: 0.2, jitter: 1.0 };
+    params.crown = CrownStyle::Hull { tiers: 5, sides: 7, lift: 0.2, jitter: 1.0, trunk_only: true };
     params.trunk_style = TrunkStyle::Prism { sides: 5 };
     params
 }

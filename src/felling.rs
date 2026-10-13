@@ -852,7 +852,13 @@ fn fall_direction(transform: &Transform, direction: Vec2) -> Vec3 {
 /// The front edge of the cut toward `direction`, which a falling tree turns about (the hinge
 /// wood of a real felling cut), and how far it is from the trunk's centre.
 fn hinge_point(outlines: &[Vec<Vec3>], cut_y: f32, direction: Vec3) -> (Vec3, f32) {
-    let trunk = outlines.iter().max_by_key(|o| o.len()).map(Vec::as_slice).unwrap_or(&[]);
+    // The trunk's outline is the one that encloses the most (a limb the cut crosses lengthwise has
+    // more points, as a flat-shaded trunk has few, but encloses little).
+    let area = |o: &Vec<Vec3>| {
+        let twice: f32 = (0..o.len()).map(|i| (o[i].x * o[(i + 1) % o.len()].z) - (o[(i + 1) % o.len()].x * o[i].z)).sum();
+        twice.abs()
+    };
+    let trunk = outlines.iter().max_by(|a, b| area(a).total_cmp(&area(b))).map(Vec::as_slice).unwrap_or(&[]);
     if trunk.is_empty() {
         return (Vec3::new(0.0, cut_y, 0.0), 0.0);
     }
@@ -1687,6 +1693,49 @@ mod tests {
                 let apart = (pair[1].0.xz() - pair[0].1.xz()).length();
                 assert!((apart - gap).abs() < 0.01 * gap, "{apart} between logs, not {gap}");
             }
+        }
+    }
+
+    #[test]
+    fn a_hull_spruce_notched_and_felled_in_one_frame_falls_like_a_round_one() {
+        use crate::params::TrunkStyle;
+        let hull = crate::crown_hull::hull_spruce();
+        let round = TreeParams { trunk_style: TrunkStyle::Round, crown: crate::params::CrownStyle::Leaves, ..hull.clone() };
+        let crown = |trunk_only| crate::params::CrownStyle::Hull { tiers: 5, sides: 7, lift: 0.2, jitter: 1.0, trunk_only };
+        let branchy = TreeParams { crown: crown(false), ..hull.clone() };
+        for (what, params) in [("round", round), ("hull, trunk only", hull), ("hull with every branch", branchy)] {
+            let mut app = app();
+            // Spawned with the notch and the fall already on it, as `inspect` does.
+            let tree = app
+                .world_mut()
+                .spawn((
+                    ProceduralTree(params),
+                    TreeAge(f32::INFINITY),
+                    Transform::default(),
+                    TreeNotch { direction: Vec2::X, height: 0.6, depth: 0.3 },
+                    FellTree { direction: Vec2::X, speed: 4.0, ..Default::default() },
+                ))
+                .id();
+            assert_eq!(settle(&mut app, 900), 1, "{what}: did not land exactly once");
+            let felled = app.world().get::<Felled>(tree).unwrap().clone();
+            // Inspect photographed it standing at a tilt of 12 degrees, taken for lying: a prism
+            // tree's hinge was a limb's cut, not the trunk's.
+            assert!(felled.at_rest && felled.fall.rest > 45f32.to_radians(), "{what}: at rest {} at {} degrees", felled.at_rest, felled.fall.rest.to_degrees());
+        }
+    }
+
+    #[test]
+    fn a_felled_prism_tree_still_rests_on_its_limbs_and_not_on_its_own_trunk() {
+        use crate::params::TrunkStyle;
+        for (what, style) in [("round", TrunkStyle::Round), ("prism", TrunkStyle::Prism { sides: 5 })] {
+            let params = TreeParams { trunk_style: style, ..TreePreset::Spruce.params() };
+            let tree = build_tree(&params, f32::INFINITY);
+            let above = cut(&tree.trunk, 0.6, true);
+            let (hinge, reach) = hinge_point(&above.outlines, 0.6, Vec3::X);
+            let points = contact_points(&above.kept, &tree.skeleton, &params, 0.6, reach);
+            let axis = Vec3::Y.cross(Vec3::X).normalize();
+            let (rest, contact) = rest_angle(&points, hinge, axis, |p| p.y);
+            assert!(rest > 45f32.to_radians(), "{what}: rests at {}° on {contact} ({} points, hinge {hinge})", rest.to_degrees(), points.len());
         }
     }
 }

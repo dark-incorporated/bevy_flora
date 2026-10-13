@@ -408,7 +408,7 @@ fn hull_for(
     detail: Option<f32>,
     bounds: Option<(Vec3, Vec3)>,
 ) -> Option<Hull> {
-    let CrownStyle::Hull { tiers, sides, lift, jitter } = params.crown else { return None };
+    let CrownStyle::Hull { tiers, sides, lift, jitter, .. } = params.crown else { return None };
     let spec = HullSpec { tiers, sides, lift, jitter };
     let spec = detail.map_or(spec, |detail| spec.scaled(detail));
     let mut hull = crown_triangles(&hull_cloud(cloud), trunk_top, spec, params.seed)?;

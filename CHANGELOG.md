@@ -44,6 +44,12 @@ with the time of day, the weather or the map it is showing.
   and a round trunk and renders as before; both fields are in `.tree.ron` files and under the
   `serde` feature (a file that leaves them out gets the defaults). `TreeParams::gpu_growable()` is
   true only for leaf cards on a round trunk.
+  - `CrownStyle::Hull::trunk_only`: the wood of a hull tree is its trunk chain only (trunk and
+    leader, no side branches; the hull spruce's wood goes from 9 425 triangles to 120), and the
+    hull's apex covers the leader's tip. The skeleton keeps its branches. `false` draws them all.
+  - Felling a prism tree: `hinge_point` took the outline with the most points for the trunk's
+    cut, and a flat-shaded trunk has few, so a limb the cut crossed lengthwise won; the tree
+    rested at 12 degrees instead of falling. It takes the outline that encloses the most now.
   - New pure module `crown_hull` (`HullSpec`, `Hull`, `Facet`, `crown_triangles`, `crown_extent`,
     `percentile`): the cloud is each leaf's position and its tip (`position + up * size`), cut into
     `tiers` bands from its 5th-percentile height (lifted to `lift` of the top) to its top; a band's

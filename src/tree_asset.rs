@@ -262,8 +262,8 @@ mod tests {
         // A file written before they existed has neither: leaf cards and a round trunk.
         let old = TreeParams::from_ron("(seed: 3)").unwrap();
         assert_eq!((old.crown, old.trunk_style), (crate::CrownStyle::Leaves, crate::TrunkStyle::Round));
-        let by_hand = TreeParams::from_ron("(crown: Hull(tiers: 4, sides: 6, lift: 0.1, jitter: 0.5), trunk_style: Prism(sides: 4))").unwrap();
-        assert_eq!(by_hand.crown, crate::CrownStyle::Hull { tiers: 4, sides: 6, lift: 0.1, jitter: 0.5 });
+        let by_hand = TreeParams::from_ron("(crown: Hull(tiers: 4, sides: 6, lift: 0.1, jitter: 0.5, trunk_only: false), trunk_style: Prism(sides: 4))").unwrap();
+        assert_eq!(by_hand.crown, crate::CrownStyle::Hull { tiers: 4, sides: 6, lift: 0.1, jitter: 0.5, trunk_only: false });
         assert_eq!(by_hand.trunk_style, crate::TrunkStyle::Prism { sides: 4 });
     }
 

@@ -302,7 +302,7 @@ fn only_a_leaf_card_tree_with_a_round_trunk_grows_on_the_gpu() {
     use super::grows_on_gpu;
     use crate::params::{CrownStyle, TrunkStyle};
     let oak = TreePreset::Oak.params();
-    let hull = TreeParams { crown: CrownStyle::Hull { tiers: 3, sides: 5, lift: 0.2, jitter: 1.0 }, ..oak.clone() };
+    let hull = TreeParams { crown: CrownStyle::Hull { tiers: 3, sides: 5, lift: 0.2, jitter: 1.0, trunk_only: true }, ..oak.clone() };
     let prism = TreeParams { trunk_style: TrunkStyle::Prism { sides: 5 }, ..oak.clone() };
     for (params, expected) in [(&oak, true), (&hull, false), (&prism, false)] {
         assert_eq!(grows_on_gpu(true, &GpuGrowthSupport(true), params), expected);

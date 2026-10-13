@@ -470,6 +470,11 @@ pub(crate) fn skeleton_mesh_coarse(skeleton: &Skeleton, params: &TreeParams, coa
     )
 }
 
+/// Whether the wood of this tree is its trunk chain only (`CrownStyle::Hull { trunk_only: true, .. }`).
+pub(crate) fn trunk_only(params: &TreeParams) -> bool {
+    matches!(params.crown, crate::params::CrownStyle::Hull { trunk_only: true, .. })
+}
+
 /// The faces of the trunk of a [`TrunkStyle::Prism`] tree (at least 3), `None` for a round one.
 pub(crate) fn prism_sides(params: &TreeParams) -> Option<u32> {
     match params.trunk_style {
@@ -488,6 +493,7 @@ fn skeleton_mesh_inner(
     // A prism trunk (`TrunkStyle::Prism`): the trunk has its sides, branch tubes and collars no
     // more, nothing is smoothed and the result is flat-shaded at the end.
     let prism = prism_sides(params);
+    let only_trunk = trunk_only(params);
     let prismatic;
     let params = match prism {
         Some(sides) => {
@@ -515,6 +521,10 @@ fn skeleton_mesh_inner(
 
     for (index, node) in skeleton.nodes.iter().enumerate().skip(1) {
         if node.length <= 1e-4 || node.base_radius <= 0.0 {
+            continue;
+        }
+        // A hull tree drawn as its trunk chain: no side branches (the crown hides them).
+        if only_trunk && node.kind != NodeKind::Leader {
             continue;
         }
         let segments = match coarse {
