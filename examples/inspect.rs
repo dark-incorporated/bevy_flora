@@ -2,7 +2,7 @@
 //! distance, from every side, at several zooms and in a row of frames.
 //!
 //! ```text
-//! cargo run --release --example inspect -- --out <dir> [--preset <name>] [--mode pool|tree]
+//! cargo run --release --example inspect -- --out <dir> [--preset <name>] [--mode pool|tree|deadfall]
 //!     [--age <a>] [--seed <n>] [--frames <n>] [--distance <m>[,<m>]] [--constant-size [<share>]]
 //!     [--fov <deg>] [--yaw <deg>] [--eye <m>] [--look <share>] [--sun <x,y,z>] [--wind <s>]
 //!     [--size <w>x<h>] [--lod <a,b,c>] [--no-impostors] [--level <0|1|2|3>] [--empty] [--no-msaa]
@@ -19,6 +19,10 @@
 //! camera backs off from the first to the second in `n` steps, spaced geometrically, so the
 //! tree passes through every level of detail and into the impostor. Each frame is written to
 //! `<dir>/frame_<nnnn>.png` and the camera's distance and field of view to `<dir>/frames.tsv`.
+//!
+//! `--mode deadfall` draws pooled deadfall instead of one tree ([`PooledDeadfall`](bevy_flora::PooledDeadfall)):
+//! two variants each of a stump, a tree lying where it fell and a bucked one, in rows 12 m apart, the
+//! fallen toward +x (down a `--slope`); `--preset`, `--hull` and `--prism` choose the tree.
 //!
 //! `--mode pool` (the default) draws the tree from a [`TreePool`](bevy_flora::TreePool), as a
 //! forest would, so the level of detail follows the distance (`--lod` moves the switches,
@@ -86,7 +90,8 @@ use bevy::time::TimeUpdateStrategy;
 use bevy_flora::{
     BuckTree, CrownStyle, DropLeaves, FellTree, Felled, FloraFire, FloraGround, FloraPlugin, FloraSeason,
     FloraWetness, FloraWind, FoliagePusher, LodDistances, LodSettings, PooledTree, ProceduralTree, RenderStyle, TreeAge,
-    TreeLod, TreeNotch, TreePool, TreePreset, TreeShape, TrunkStyle, build_pool, build_tree,
+    TreeLod, TreeNotch, TreePool, TreePreset, TreeShape, TrunkStyle, build_pool, build_pool_with_deadfall, build_tree,
+    DeadfallKind, DeadfallSettings, PooledDeadfall,
 };
 
 /// Frames rendered before the first photograph so the pool's impostor is baked and shadows exist.
@@ -103,6 +108,8 @@ fn ticks(seconds: f32) -> u32 {
 enum Mode {
     Pool,
     Tree,
+    /// Pooled deadfall (`PooledDeadfall`): a stump, a lying tree and a bucked one, two variants of each.
+    Deadfall,
 }
 
 struct Args {
@@ -246,6 +253,7 @@ fn parse_args() -> Args {
                 args.mode = match it.next().as_deref() {
                     Some("pool") => Mode::Pool,
                     Some("tree") => Mode::Tree,
+                    Some("deadfall") => Mode::Deadfall,
                     _ => usage(),
                 }
             }
@@ -613,6 +621,35 @@ fn setup(
         Mode::Pool => {
             let pool = pools.add(build_pool(&params, 1, shoot.args.age, &lod, &mut meshes));
             commands.spawn((PooledTree { pool, variant: 0 }, Transform::from_xyz(0.0, shoot.base, 0.0))).id()
+        }
+        Mode::Deadfall => {
+            let pool = pools.add(build_pool_with_deadfall(
+                &params,
+                2,
+                shoot.args.age,
+                &lod,
+                &DeadfallSettings::default(),
+                &mut meshes,
+            ));
+            // Down the slope (it falls toward +x) or toward +x on flat ground; a row of each kind.
+            let direction = Vec2::X;
+            let kinds = [
+                DeadfallKind::Stump,
+                DeadfallKind::Lying { direction },
+                DeadfallKind::Bucked { direction },
+            ];
+            let mut first = None;
+            for (row, kind) in kinds.into_iter().enumerate() {
+                for variant in 0..2u32 {
+                    let at = Vec2::new(variant as f32 * 14.0, (row as f32 - 1.0) * 12.0);
+                    let y = shoot.ground.footing(at, params.base_radius());
+                    let id = commands
+                        .spawn((PooledDeadfall { pool: pool.clone(), variant, kind }, Transform::from_xyz(at.x, y, at.y)))
+                        .id();
+                    first.get_or_insert(id);
+                }
+            }
+            first.expect("deadfall spawned")
         }
         Mode::Tree => {
             let at = Transform::from_xyz(0.0, shoot.base, 0.0);

@@ -233,6 +233,7 @@ impl bevy::app::Plugin for FloraPlugin {
             .add_message::<TreeBurnt>()
             .add_message::<RecolorTree>()
             .init_resource::<FloraUnits>()
+            .init_resource::<crate::deadfall::DeadMaterialCache>()
             .init_resource::<FallingLeaves>()
             .init_resource::<FallCaches>()
             .init_resource::<SeasonShed>()
@@ -296,6 +297,7 @@ impl bevy::app::Plugin for FloraPlugin {
                     crate::deadfall::buck_pooled_deadfall,
                     fill_pooled_shapes,
                     recolor_pools,
+                    crate::deadfall::restyle_deadfall,
                     sync_pooled_looks,
                 )
                     .chain(),

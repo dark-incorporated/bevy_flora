@@ -12,9 +12,12 @@
 //! sheds nothing; it is fire fuel, and takes [`NotShadowCaster`] like a pooled tree does. Insert
 //! [`BuckTree`] on a lying one and it becomes bucked in place.
 
-use bevy::asset::{Assets, Handle};
+use std::sync::Arc;
+
+use bevy::asset::{AssetId, Assets, Handle};
 use bevy::camera::visibility::Visibility;
 use bevy::ecs::prelude::*;
+use bevy::ecs::system::EntityCommands;
 use bevy::light::NotShadowCaster;
 use bevy::math::{Quat, Vec2, Vec3, Vec3Swizzles};
 use bevy::mesh::{Mesh, Mesh3d};
@@ -22,7 +25,7 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
 
 use crate::felling::{
-    BuckTree, CutFace, LOG_GAP, TreeLog, TreeStump, contact_points, fall_direction, hinge_point, lay_log, log_end,
+    BuckTree, CutFace, LOG_GAP, TreeLog, TreeStump, calm_params, contact_points, fall_direction, hinge_point, lay_log, log_end,
     rest_angle, saw_height, trunk_alone,
 };
 use crate::ground::FloraGround;
@@ -32,7 +35,9 @@ use crate::mesh::cut::cut;
 use crate::params::TreeParams;
 use crate::pipeline::TreeMeshes;
 use crate::plugin::{crown_material, material};
-use crate::pool::{PoolVariant, TreePool, banded};
+use crate::pool::{PoolColors, PoolRecolors, PoolVariant, PooledLook, RecolorPool, TreePool, banded};
+use crate::recolor::CutWood;
+use crate::units::FloraUnits;
 use crate::shading::{FloraMaterial, FloraMaterialSupport, FloraWindBuffer, SharedFlora, TextureLibrary};
 use crate::shape::{TreeShape, WoodCapsule};
 
@@ -201,12 +206,24 @@ pub(crate) struct DeadfallSpawned;
 /// Deadfall given its children in one frame, at most.
 const MAX_PER_FRAME: usize = 4096;
 
-/// The materials deadfall is drawn with: where they are chosen, for every kind. A fallen tree does
-/// not sway (the wind response of its look is zero), so wood and leaves are of the calm look.
+/// What a mesh child of a [`PooledDeadfall`] is, so a change of look or colours can re-dress it.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DeadRole {
+    Wood,
+    Leaves,
+    Face,
+}
+
+/// The materials one look of a pool's deadfall is drawn with: where they are chosen, for every
+/// kind. A fallen tree does not sway (the wind response of its look is zero), so wood and leaves
+/// are of the calm look, of the look's current colours (`RecolorPool` included).
 #[derive(Clone)]
 pub(crate) struct DeadMaterials {
-    pub wood: Material,
-    pub leaves: Material,
+    wood: Material,
+    leaves: Material,
+    face: Material,
+    /// The colours they are made in.
+    colors: PoolColors,
 }
 
 #[derive(Clone)]
@@ -215,37 +232,91 @@ pub(crate) enum Material {
     Standard(Handle<StandardMaterial>),
 }
 
-fn dead_materials(
+impl DeadMaterials {
+    fn of(&self, role: DeadRole) -> &Material {
+        match role {
+            DeadRole::Wood => &self.wood,
+            DeadRole::Leaves => &self.leaves,
+            DeadRole::Face => &self.face,
+        }
+    }
+}
+
+/// The deadfall materials made so far, by pool and look: one set for every instance of a look.
+#[derive(Resource, Default)]
+pub(crate) struct DeadMaterialCache(bevy::platform::collections::HashMap<(AssetId<TreePool>, u32), DeadMaterials>);
+
+/// The materials of `look` (taken modulo the pool's looks) of the pool `id`, made on first use.
+#[allow(clippy::too_many_arguments)]
+fn dead_materials<'a>(
+    cache: &'a mut DeadMaterialCache,
+    id: AssetId<TreePool>,
     pool: &TreePool,
+    look: u32,
+    recolors: &PoolRecolors,
     wind: Option<&FloraWindBuffer>,
     flora: &mut Assets<FloraMaterial>,
     shared: &mut SharedFlora,
     standard: &mut Assets<StandardMaterial>,
     textures: &mut TextureLibrary,
-) -> DeadMaterials {
-    let calm = TreeParams { wind: crate::WindResponse { sway: 0.0, ..pool.params.wind.clone() }, ..pool.params.clone() };
-    match wind {
-        Some(wind) => DeadMaterials {
-            wood: Material::Flora(shared.resolve(flora, &textures.wood(&calm), wind)),
-            leaves: Material::Flora(shared.resolve(flora, &textures.leaves(&calm), wind)),
-        },
-        None => DeadMaterials {
-            wood: Material::Standard(standard.add(material(pool.params.trunk_color))),
-            leaves: Material::Standard(standard.add(crown_material(&pool.params))),
-        },
-    }
+    cut_face: &mut CutFace,
+) -> &'a DeadMaterials {
+    let look = look % pool.looks.len().max(1) as u32;
+    cache.0.entry((id, look)).or_insert_with(|| {
+        let colors = recolors.colors(id, look, pool);
+        let face = Material::Standard(cut_face.get(textures, standard, colors.unlit));
+        let calm = calm_params(&pool.params);
+        match wind {
+            Some(wind) => {
+                let (wood, leaves) = colors.surfaces(&calm, textures);
+                DeadMaterials {
+                    wood: Material::Flora(shared.resolve(flora, &wood, wind)),
+                    leaves: Material::Flora(shared.resolve(flora, &leaves, wind)),
+                    face,
+                    colors,
+                }
+            }
+            None => {
+                let unlit = |base: StandardMaterial| StandardMaterial { unlit: colors.unlit, ..base };
+                DeadMaterials {
+                    wood: Material::Standard(standard.add(unlit(material(colors.wood)))),
+                    leaves: Material::Standard(standard.add(unlit(crown_material(&colors.apply(&pool.params))))),
+                    face,
+                    colors,
+                }
+            }
+        }
+    })
 }
 
-fn spawn_mesh(commands: &mut Commands, parent: Entity, mesh: &Handle<Mesh>, material: &Material, at: Transform, quiet: bool) -> Entity {
-    let mut child = commands.spawn((Mesh3d(mesh.clone()), at, ChildOf(parent)));
+fn dress(child: &mut EntityCommands, material: &Material) {
     match material {
         Material::Flora(m) => child.insert(MeshMaterial3d(m.clone())),
         Material::Standard(m) => child.insert(MeshMaterial3d(m.clone())),
     };
+}
+
+fn spawn_mesh(
+    commands: &mut Commands,
+    parent: Entity,
+    mesh: &Handle<Mesh>,
+    role: DeadRole,
+    materials: &DeadMaterials,
+    at: Transform,
+    quiet: bool,
+) -> Entity {
+    let mut child = commands.spawn((Mesh3d(mesh.clone()), at, role, ChildOf(parent)));
+    dress(&mut child, materials.of(role));
     if quiet {
         child.insert(NotShadowCaster);
     }
     child.id()
+}
+
+/// What [`RecolorTree`](crate::RecolorTree) needs to dress a stump or a log: the pool's
+/// parameters in the colours of the look, calm.
+fn cut_wood(pool: &TreePool, materials: &DeadMaterials) -> CutWood {
+    CutWood { params: Arc::new(materials.colors.apply(&pool.params)), unlit: materials.colors.unlit, calm: true }
 }
 
 /// The rotation about `hinge` that turns a tree `angle` about `axis`, as a transform in its space.
@@ -266,36 +337,45 @@ pub(crate) fn spawn_pooled_deadfall(
     mut standard: ResMut<Assets<StandardMaterial>>,
     mut textures: TextureLibrary,
     mut cut_face: ResMut<CutFace>,
+    recolors: Res<PoolRecolors>,
+    mut cache: ResMut<DeadMaterialCache>,
     ground: Option<Res<FloraGround>>,
-    deadfall: Query<(Entity, &PooledDeadfall, &Transform, Has<NotShadowCaster>), Without<DeadfallSpawned>>,
-    mut made: Local<bevy::platform::collections::HashMap<bevy::asset::AssetId<TreePool>, DeadMaterials>>,
+    units: Res<FloraUnits>,
+    deadfall: Query<(Entity, &PooledDeadfall, Option<&PooledLook>, &Transform, Has<NotShadowCaster>), Without<DeadfallSpawned>>,
 ) {
     let wind = wind.as_deref().filter(|_| flora_support.is_some());
     let mut spawned = 0;
-    for (entity, dead, base, quiet) in &deadfall {
+    for (entity, dead, look, base, quiet) in &deadfall {
         let Some(pool) = pools.get(&dead.pool) else { continue };
         let variant = &pool.variants[dead.variant as usize % pool.variants.len()];
         let Some(cut) = &variant.deadfall else {
             bevy::log::warn_once!("bevy_flora: a PooledDeadfall's pool was built without deadfall (`build_pool_with_deadfall`)");
             continue;
         };
-        let face = cut_face.get(&mut textures, &mut standard, false);
-        if !made.contains_key(&dead.pool.id()) {
-            let materials = dead_materials(pool, wind, &mut flora, &mut shared, &mut standard, &mut textures);
-            made.insert(dead.pool.id(), materials);
-        }
-        let materials = &made[&dead.pool.id()];
-        let face = Material::Standard(face);
+        let materials = dead_materials(
+            &mut cache,
+            dead.pool.id(),
+            pool,
+            look.map_or(0, |look| look.0),
+            &recolors,
+            wind,
+            &mut flora,
+            &mut shared,
+            &mut standard,
+            &mut textures,
+            &mut cut_face,
+        )
+        .clone();
         commands.entity(entity).insert(DeadfallSpawned);
         spawned += 1;
         match dead.kind {
-            DeadfallKind::Stump => spawn_stump(&mut commands, entity, cut, materials, &face, quiet),
+            DeadfallKind::Stump => spawn_stump(&mut commands, entity, pool, cut, &materials, quiet),
             DeadfallKind::Lying { direction } => {
                 let lie = lie(base, cut, direction, ground.as_deref());
-                spawn_lying(&mut commands, entity, variant, cut, materials, &face, lie.pivot, quiet, pool.lod.distances);
+                spawn_lying(&mut commands, entity, variant, cut, &materials, lie.pivot, quiet, pool.lod.distances, units.units_per_metre);
             }
             DeadfallKind::Bucked { direction } => {
-                spawn_stump(&mut commands, entity, cut, materials, &face, quiet);
+                spawn_stump(&mut commands, entity, pool, cut, &materials, quiet);
                 let lie = lie(base, cut, direction, ground.as_deref());
                 let up = lie.pivot.rotation * Vec3::Y;
                 let along = Vec2::new(up.x, up.z).normalize_or(Vec2::X);
@@ -306,7 +386,8 @@ pub(crate) fn spawn_pooled_deadfall(
                 };
                 let local_dir = fall_direction(base, direction);
                 let (hinge, _) = hinge_point(std::slice::from_ref(&cut.outline), cut.cut_y, local_dir);
-                let mut at = base.transform_point(hinge).xz() + along * LOG_GAP;
+                let gap = LOG_GAP * units.units_per_metre;
+                let mut at = base.transform_point(hinge).xz() + along * gap;
                 for (index, log) in cut.logs.iter().enumerate() {
                     let length = (log.c1 - log.c0).length() * scale;
                     let place = lay_log(base, at, along, length, (log.c0, log.r0), (log.c1, log.r1), rest);
@@ -315,13 +396,19 @@ pub(crate) fn spawn_pooled_deadfall(
                     // with it, in the stump's space.
                     let local = Transform::from_matrix(base.to_matrix().inverse() * place.to_matrix());
                     let entity_log = commands
-                        .spawn((local, Visibility::Inherited, TreeLog { stump: entity, index: index as u32, capsule }, ChildOf(entity)))
+                        .spawn((
+                            local,
+                            Visibility::Inherited,
+                            TreeLog { stump: entity, index: index as u32, capsule },
+                            cut_wood(pool, &materials),
+                            ChildOf(entity),
+                        ))
                         .id();
-                    spawn_mesh(&mut commands, entity_log, &log.wood, &materials.wood, Transform::IDENTITY, quiet);
+                    spawn_mesh(&mut commands, entity_log, &log.wood, DeadRole::Wood, &materials, Transform::IDENTITY, quiet);
                     if let Some(ends) = &log.ends {
-                        spawn_mesh(&mut commands, entity_log, ends, &face, Transform::IDENTITY, quiet);
+                        spawn_mesh(&mut commands, entity_log, ends, DeadRole::Face, &materials, Transform::IDENTITY, quiet);
                     }
-                    at = place.transform_point(log.c1).xz() + along * LOG_GAP;
+                    at = place.transform_point(log.c1).xz() + along * gap;
                 }
             }
         }
@@ -336,7 +423,8 @@ struct Lie {
 }
 
 /// How a tree of `cut` standing as `base` lies after falling toward `direction` (world x, z): the
-/// turn about the hinge of its cut, until its limbs reach the ground.
+/// turn about the hinge of its cut, until the points of its wood that hold it up reach the
+/// ground. `base`'s scale and the ground are the world's; the tree's own space is metres.
 fn lie(base: &Transform, cut: &Deadfall, direction: Vec2, ground: Option<&FloraGround>) -> Lie {
     let scale = base.scale.y.max(1.0e-4);
     let local_dir = fall_direction(base, direction);
@@ -353,11 +441,11 @@ fn lie(base: &Transform, cut: &Deadfall, direction: Vec2, ground: Option<&FloraG
     Lie { pivot: pivot_about(hinge, axis, rest) }
 }
 
-fn spawn_stump(commands: &mut Commands, entity: Entity, cut: &Deadfall, materials: &DeadMaterials, face: &Material, quiet: bool) {
-    commands.entity(entity).insert(TreeStump { tree: None });
-    spawn_mesh(commands, entity, &cut.stump, &materials.wood, Transform::IDENTITY, quiet);
+fn spawn_stump(commands: &mut Commands, entity: Entity, pool: &TreePool, cut: &Deadfall, materials: &DeadMaterials, quiet: bool) {
+    commands.entity(entity).insert((TreeStump { tree: None }, cut_wood(pool, materials)));
+    spawn_mesh(commands, entity, &cut.stump, DeadRole::Wood, materials, Transform::IDENTITY, quiet);
     if let Some(stump_face) = &cut.stump_face {
-        spawn_mesh(commands, entity, stump_face, face, Transform::IDENTITY, quiet);
+        spawn_mesh(commands, entity, stump_face, DeadRole::Face, materials, Transform::IDENTITY, quiet);
     }
 }
 
@@ -370,22 +458,26 @@ fn spawn_lying(
     variant: &PoolVariant,
     cut: &Deadfall,
     materials: &DeadMaterials,
-    face: &Material,
     pivot: Transform,
     quiet: bool,
     distances: LodDistances,
+    units: f32,
 ) {
-    let bands = [banded(0.0, distances.lod1), banded(distances.lod1, distances.lod2), banded(distances.lod2, f32::INFINITY)];
+    let bands = [
+        banded(0.0, distances.lod1, units),
+        banded(distances.lod1, distances.lod2, units),
+        banded(distances.lod2, f32::INFINITY, units),
+    ];
     for (level, (lod_band, range)) in bands.into_iter().enumerate() {
-        let wood = spawn_mesh(commands, entity, &cut.lying[level], &materials.wood, pivot, quiet);
+        let wood = spawn_mesh(commands, entity, &cut.lying[level], DeadRole::Wood, materials, pivot, quiet);
         commands.entity(wood).insert((lod_band, range.clone(), variant.bounds[level]));
         if let Some(leaves) = &variant.leaves[level] {
-            let leaf = spawn_mesh(commands, entity, leaves, &materials.leaves, pivot, quiet);
+            let leaf = spawn_mesh(commands, entity, leaves, DeadRole::Leaves, materials, pivot, quiet);
             commands.entity(leaf).insert((lod_band, range, variant.bounds[level]));
         }
     }
     if let Some(lying_face) = &cut.lying_face {
-        spawn_mesh(commands, entity, lying_face, face, pivot, quiet);
+        spawn_mesh(commands, entity, lying_face, DeadRole::Face, materials, pivot, quiet);
     }
     // The variant's shape, in the space of the lying tree.
     commands.spawn((pivot, TreeShape::clone(&variant.shape), ChildOf(entity)));
@@ -401,7 +493,91 @@ pub(crate) fn buck_pooled_deadfall(
         commands.entity(entity).remove::<BuckTree>();
         if let DeadfallKind::Lying { direction } = dead.kind {
             dead.kind = DeadfallKind::Bucked { direction };
-            commands.entity(entity).despawn_related::<Children>().remove::<(DeadfallSpawned, TreeStump)>();
+            commands.entity(entity).despawn_related::<Children>().remove::<(DeadfallSpawned, TreeStump, CutWood)>();
+        }
+    }
+}
+
+/// What choosing a look's materials needs, for the systems that re-dress deadfall.
+#[derive(bevy::ecs::system::SystemParam)]
+pub(crate) struct LookParams<'w> {
+    flora: ResMut<'w, Assets<FloraMaterial>>,
+    shared: ResMut<'w, SharedFlora>,
+    standard: ResMut<'w, Assets<StandardMaterial>>,
+    cut_face: ResMut<'w, CutFace>,
+    recolors: Res<'w, PoolRecolors>,
+    cache: ResMut<'w, DeadMaterialCache>,
+}
+
+/// Re-dress deadfall whose look changed ([`PooledLook`] changed or taken off) or whose pool's look
+/// was recoloured ([`RecolorPool`]): every mesh child takes the material of its role in the
+/// look's calm materials, and the stump's and logs' [`CutWood`] follow, so a later
+/// [`RecolorTree`](crate::RecolorTree) starts from these colours.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+pub(crate) fn restyle_deadfall(
+    mut commands: Commands,
+    mut recolored: MessageReader<RecolorPool>,
+    changed: Query<Entity, (With<DeadfallSpawned>, Changed<PooledLook>)>,
+    mut removed: RemovedComponents<PooledLook>,
+    pools: Res<Assets<TreePool>>,
+    flora_support: Option<Res<FloraMaterialSupport>>,
+    wind: Option<Res<FloraWindBuffer>>,
+    mut look: LookParams,
+    mut textures: TextureLibrary,
+    deadfall: Query<(Entity, &PooledDeadfall, Option<&PooledLook>, &Children), With<DeadfallSpawned>>,
+    roles: Query<&DeadRole>,
+    all_children: Query<&Children>,
+    mut cuts: Query<&mut CutWood>,
+) {
+    let wind = wind.as_deref().filter(|_| flora_support.is_some());
+    let mut stale: Vec<(AssetId<TreePool>, u32)> = Vec::new();
+    for message in recolored.read() {
+        stale.push((message.pool, message.look));
+    }
+    let moved: Vec<Entity> = changed.iter().chain(removed.read()).collect();
+    if stale.is_empty() && moved.is_empty() {
+        return;
+    }
+    // The recoloured looks are made again in their new colours.
+    for key in &stale {
+        look.cache.0.remove(key);
+    }
+    for (entity, dead, picked, children) in &deadfall {
+        let Some(pool) = pools.get(&dead.pool) else { continue };
+        let this_look = picked.map_or(0, |look| look.0) % pool.looks.len().max(1) as u32;
+        if !moved.contains(&entity) && !stale.contains(&(dead.pool.id(), this_look)) {
+            continue;
+        }
+        let materials = dead_materials(
+            &mut look.cache,
+            dead.pool.id(),
+            pool,
+            this_look,
+            &look.recolors,
+            wind,
+            &mut look.flora,
+            &mut look.shared,
+            &mut look.standard,
+            &mut textures,
+            &mut look.cut_face,
+        )
+        .clone();
+        let wood = CutWood { params: Arc::new(materials.colors.apply(&pool.params)), unlit: materials.colors.unlit, calm: true };
+        if let Ok(mut cut) = cuts.get_mut(entity) {
+            *cut = wood.clone();
+        }
+        let mut stack: Vec<Entity> = children.iter().collect();
+        while let Some(child) = stack.pop() {
+            if let Ok(role) = roles.get(child) {
+                dress(&mut commands.entity(child), materials.of(*role));
+            }
+            if let Ok(mut cut) = cuts.get_mut(child) {
+                // A log: its meshes are its children.
+                *cut = wood.clone();
+            }
+            if let Ok(below) = all_children.get(child) {
+                stack.extend(below.iter());
+            }
         }
     }
 }
@@ -418,6 +594,7 @@ mod tests {
     use crate::plugin::{FloraPlugin, ProceduralTree};
     use crate::presets::TreePreset;
     use crate::{FloraIndex, PooledTree};
+    use bevy::color::Color;
 
     fn app() -> App {
         let mut app = App::new();
@@ -551,5 +728,162 @@ mod tests {
         }
         assert!(matches!(app.world().get::<PooledDeadfall>(dead).unwrap().kind, DeadfallKind::Bucked { .. }));
         assert!(descendants(&app, dead).into_iter().any(|c| app.world().get::<TreeLog>(c).is_some()), "no logs");
+    }
+
+    fn looked(app: &mut App) -> Handle<TreePool> {
+        let params = TreePreset::Oak.params();
+        let lod = LodSettings { distances: LodDistances { impostor: f32::INFINITY, ..Default::default() }, ..Default::default() };
+        let mut pool = {
+            let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+            crate::pool::build_pool_with_deadfall(&params, 1, f32::INFINITY, &lod, &DeadfallSettings::default(), &mut meshes)
+        };
+        pool.add_look(PoolColors { wood: Color::srgb(0.9, 0.1, 0.1), leaves: Color::srgb(0.1, 0.9, 0.1), unlit: false });
+        app.world_mut().resource_mut::<Assets<TreePool>>().add(pool)
+    }
+
+    /// The base colours of the wood and leaf materials (plain ones, in a headless app) of `entity`'s
+    /// mesh children, one of each, and how many materials there were.
+    fn colours(app: &App, entity: Entity) -> (Vec<Color>, Vec<Color>, usize) {
+        let (mut wood, mut leaves) = (Vec::new(), Vec::new());
+        let mut all = std::collections::HashSet::new();
+        let mut stack = descendants(app, entity);
+        while let Some(child) = stack.pop() {
+            stack.extend(descendants(app, child));
+            let (Some(role), Some(m)) = (app.world().get::<DeadRole>(child), app.world().get::<MeshMaterial3d<StandardMaterial>>(child)) else {
+                continue;
+            };
+            all.insert(m.0.id());
+            let colour = app.world().resource::<Assets<StandardMaterial>>().get(&m.0).unwrap().base_color;
+            match role {
+                DeadRole::Wood => wood.push(colour),
+                DeadRole::Leaves => leaves.push(colour),
+                DeadRole::Face => {}
+            }
+        }
+        (wood, leaves, all.len())
+    }
+
+    #[test]
+    fn a_look_picks_the_materials_of_deadfall_and_a_recolour_and_a_new_look_reach_it() {
+        use crate::pool::RecolorPool;
+        let mut app = app();
+        let pool = looked(&mut app);
+        let red = Color::srgb(0.9, 0.1, 0.1);
+        let lying = |app: &mut App, look: Option<u32>, x: f32| {
+            let mut dead = app.world_mut().spawn((
+                PooledDeadfall { pool: pool.clone(), variant: 0, kind: DeadfallKind::Lying { direction: Vec2::X } },
+                Transform::from_xyz(x, 0.0, 0.0),
+            ));
+            if let Some(look) = look {
+                dead.insert(PooledLook(look));
+            }
+            dead.id()
+        };
+        let (plain, dressed, other) = (lying(&mut app, None, 0.0), lying(&mut app, Some(1), 20.0), lying(&mut app, Some(1), 40.0));
+        app.update();
+        app.update();
+        let oak = TreePreset::Oak.params();
+        let (wood, leaves, _) = colours(&app, plain);
+        assert!(wood.iter().all(|c| *c == oak.trunk_color) && leaves.iter().all(|c| *c == oak.foliage.color), "look 0 is the parameters'");
+        let (wood, leaves, count) = colours(&app, dressed);
+        assert!(wood.iter().all(|c| *c == red) && !wood.is_empty(), "the look's wood");
+        assert!(leaves.iter().all(|c| *c == Color::srgb(0.1, 0.9, 0.1)) && !leaves.is_empty(), "the look's leaves");
+        assert_eq!(count, 3, "wood, leaves and the end grain");
+        assert_eq!(colours(&app, other).2, count);
+        let all = |app: &App| -> std::collections::HashSet<_> {
+            [dressed, other].into_iter().flat_map(|e| descendants(app, e)).filter_map(|c| app.world().get::<MeshMaterial3d<StandardMaterial>>(c).map(|m| m.0.id())).collect()
+        };
+        assert_eq!(all(&app).len(), 3, "two deadfall of a look share one set of materials");
+
+        // A recolour of the pool's look reaches the deadfall in it, and not the other looks'.
+        let blue = PoolColors { wood: Color::srgb(0.0, 0.0, 1.0), leaves: Color::srgb(1.0, 1.0, 0.0), unlit: false };
+        let id = pool.id();
+        app.world_mut().write_message(RecolorPool { pool: id, look: 1, colors: blue });
+        app.update();
+        app.update();
+        for e in [dressed, other] {
+            let (wood, leaves, _) = colours(&app, e);
+            assert!(wood.iter().all(|c| *c == blue.wood) && leaves.iter().all(|c| *c == blue.leaves), "recoloured");
+        }
+        let (wood, _, _) = colours(&app, plain);
+        assert!(wood.iter().all(|c| *c == oak.trunk_color), "look 0 is as it was");
+
+        // A change of look re-dresses it, and taking the look off puts look 0 back.
+        app.world_mut().entity_mut(dressed).remove::<PooledLook>();
+        app.update();
+        assert!(colours(&app, dressed).0.iter().all(|c| *c == oak.trunk_color));
+        app.world_mut().entity_mut(dressed).insert(PooledLook(1));
+        app.update();
+        assert!(colours(&app, dressed).0.iter().all(|c| *c == blue.wood));
+    }
+
+    #[test]
+    fn recolor_tree_dresses_a_pooled_stump_and_a_pooled_log() {
+        use crate::RecolorTree;
+        let mut app = app();
+        let pool = looked(&mut app);
+        let dead = app.world_mut().spawn((PooledDeadfall { pool, variant: 0, kind: DeadfallKind::Bucked { direction: Vec2::X } }, Transform::IDENTITY)).id();
+        app.update();
+        app.update();
+        let log = descendants(&app, dead).into_iter().find(|c| app.world().get::<TreeLog>(*c).is_some()).expect("a log");
+        let green = PoolColors { wood: Color::srgb(0.0, 1.0, 0.0), leaves: Color::WHITE, unlit: false };
+        for tree in [dead, log] {
+            app.world_mut().write_message(RecolorTree { tree, colors: green });
+        }
+        app.update();
+        let wood_of = |app: &App, entity: Entity| -> Vec<Color> {
+            descendants(app, entity)
+                .into_iter()
+                .filter(|c| app.world().get::<DeadRole>(*c) == Some(&DeadRole::Wood))
+                .filter_map(|c| app.world().get::<MeshMaterial3d<StandardMaterial>>(c))
+                .filter_map(|m| app.world().resource::<Assets<StandardMaterial>>().get(&m.0).map(|m| m.base_color))
+                .collect()
+        };
+        assert!(!wood_of(&app, dead).is_empty() && wood_of(&app, dead).iter().all(|c| *c == green.wood), "the stump");
+        assert!(!wood_of(&app, log).is_empty() && wood_of(&app, log).iter().all(|c| *c == green.wood), "the log");
+    }
+
+    /// A deadfall of `kind` in a world of `units` to the metre, its tree scaled by `units`, on the
+    /// slope of 0.25 (the same in every unit): the turn of what lies and the places of its logs.
+    fn in_a_world_of(units: f32, kind: DeadfallKind) -> (f32, Vec<Vec3>) {
+        let mut app = app();
+        app.insert_resource(crate::FloraUnits { units_per_metre: units });
+        app.insert_resource(FloraGround::new(|at: Vec2| 0.25 * at.x));
+        let pool = pool(&mut app, TreePreset::Oak);
+        let at = Vec3::new(2.0 * units, 0.25 * 2.0 * units, 1.0 * units);
+        let dead = app.world_mut().spawn((PooledDeadfall { pool, variant: 0, kind }, Transform::from_translation(at).with_scale(Vec3::splat(units)))).id();
+        app.update();
+        app.update();
+        let turn = descendants(&app, dead)
+            .into_iter()
+            .filter(|c| app.world().get::<DeadRole>(*c).is_some())
+            .filter_map(|c| app.world().get::<Transform>(c))
+            .map(|t| t.rotation.to_axis_angle().1)
+            .fold(0.0, f32::max);
+        // The logs' ends, in the world (the dead's own transform applied by hand: there is no propagation here).
+        let root = *app.world().get::<Transform>(dead).unwrap();
+        let mut ends = Vec::new();
+        for c in descendants(&app, dead) {
+            if let (Some(log), Some(t)) = (app.world().get::<TreeLog>(c), app.world().get::<Transform>(c)) {
+                ends.push(root.transform_point(t.transform_point(log.capsule.a)));
+                ends.push(root.transform_point(t.transform_point(log.capsule.b)));
+            }
+        }
+        (turn, ends)
+    }
+
+    #[test]
+    fn deadfall_in_a_world_of_feet_lies_as_the_metre_world_scaled() {
+        const FEET: f32 = 3.2808;
+        let lying = DeadfallKind::Lying { direction: Vec2::new(0.8, 0.6) };
+        let (metres, feet) = (in_a_world_of(1.0, lying).0, in_a_world_of(FEET, lying).0);
+        assert!(metres > 0.3, "it lies at {metres}");
+        assert!((metres - feet).abs() < 0.5_f32.to_radians(), "{} degrees in metres, {} in feet", metres.to_degrees(), feet.to_degrees());
+        let bucked = DeadfallKind::Bucked { direction: Vec2::new(0.8, 0.6) };
+        let ((_, in_metres), (_, in_feet)) = (in_a_world_of(1.0, bucked), in_a_world_of(FEET, bucked));
+        assert!(in_metres.len() >= 4 && in_metres.len() == in_feet.len(), "{} and {} log ends", in_metres.len(), in_feet.len());
+        for (m, f) in in_metres.iter().zip(&in_feet) {
+            assert!(m.distance(*f / FEET) < 0.01 * (1.0 + m.length()), "a log end at {m} metres is at {f} feet");
+        }
     }
 }

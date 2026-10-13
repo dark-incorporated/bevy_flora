@@ -35,6 +35,15 @@ with the time of day, the weather or the map it is showing.
   logs are the same logs the same gap apart, a fire spreads the same number of cells a second, the
   default pusher covers the same share of a shrub, falling leaves fall for as long, and the bands
   scale. `FloraUnits` is in the crate root and the prelude.
+- **Deadfall takes looks and the world's units** (#56). A `PooledLook` on a `PooledDeadfall` picks that
+  look's materials (the look's calm wood and leaves, and its end grain, unlit with the look), made
+  once for each pool and look; `RecolorPool` and a change of `PooledLook` re-dress the deadfall
+  of that look, stump, logs and lying leaves included; `RecolorTree` on a pooled stump or log
+  works (a stump and its logs carry what it needs). A lying tree rests on `FloraGround` and bucked logs
+  lie a `LOG_GAP` of `FloraUnits` apart, so a world in feet lays the same deadfall as a world in
+  metres, scaled (a test holds the turn and the logs' places). A deadfall is cut at the scale
+  its tree is placed at: a cut height or log length is in metres where the instance's scale
+  is `units_per_metre`. `inspect --mode deadfall` photographs it.
 - **Pooled deadfall** (#56). `build_pool_with_deadfall(params, variants, age, lod, &DeadfallSettings,
   meshes)` (`build_pool` is unchanged) also cuts every variant as `FellTree` and `BuckTree` would:
   `PoolVariant::deadfall` holds the stump and its face (level 0), the wood above the cut at each

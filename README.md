@@ -515,6 +515,29 @@ fn winter_spruce() -> bevy_flora::TreeParams {
 
 *`cargo run --release --example inspect -- --out target/hull --preset spruce --hull 5,7 --prism 5 --mode tree --season 0,0,1`: the stylised spruce under snow.*
 
+### Deadfall: `PooledDeadfall`
+
+A forest floor has stumps, fallen trees and logs. `build_pool_with_deadfall` builds a pool that also holds each variant cut as `FellTree` and `BuckTree` would cut it, and a `PooledDeadfall` places one for the cost of a pooled tree: a `Stump` (its wood and cut face, a `TreeStump` with no tree), a tree `Lying` where it fell (turned about the cut's hinge until its limbs reach the ground, `FloraGround` included, in the look's calm wood and leaves) or `Bucked` (the stump and `TreeLog`s in a row from it). It takes `PooledLook`, `NotShadowCaster`, `RecolorPool` and `RecolorTree`, burns, and is never in the `FloraIndex`; `BuckTree` on a lying one bucks it in place.
+
+```rust,no_run
+use bevy::prelude::*;
+use bevy_flora::{DeadfallKind, DeadfallSettings, LodSettings, PooledDeadfall, TreePool, TreePreset, build_pool_with_deadfall};
+
+fn forest_floor(mut commands: Commands, mut pools: ResMut<Assets<TreePool>>, mut meshes: ResMut<Assets<Mesh>>) {
+    let pool = build_pool_with_deadfall(
+        &TreePreset::Spruce.params(),
+        4,
+        f32::INFINITY,
+        &LodSettings::default(),
+        &DeadfallSettings::default(),
+        &mut meshes,
+    );
+    let pool = pools.add(pool);
+    let kind = DeadfallKind::Lying { direction: Vec2::X };
+    commands.spawn((PooledDeadfall { pool, variant: 0, kind }, Transform::from_xyz(10.0, 0.0, 4.0)));
+}
+```
+
 ### Seasons
 
 `FloraSeason` is a global resource like `FloraWind`: how far the leaves have turned (`autumn`, 0 summer green to 1 every leaf in its autumn colour), how many have fallen (`leaf_fall`, 0 to 1, bare), how much snow lies on the trees (`snow`, 0 to 1) and how far flowering trees are in blossom (`blossom`, 0 to 1). The deciduous presets (oak, willow, birch, bonsai, maple, poplar, baobab, Japanese maple and cherry) carry an autumn colour, `FoliageParams::autumn`; the evergreens have `None` and keep their needles. Leaves turn one at a time, each at its own moment, and fall in the order they turned. A fallen leaf is dropped in the vertex shader, so it leaves the shadows with it, and a leaf keeps its moment as the tree grows, on `GpuGrowth`, and on a pool's levels of detail; an impostor turns in patches of a few texels and thins its crown's coverage. Snow settles on every tree, first on what faces straight up and, as more falls, on steeper faces: the tops of branches, and on leaf and needle cards the side the camera sees when that side faces up (a tier of needles is white from above and green from below), as much as the leaf sees of the sky, with a light dusting on every exposed needle so a snowy conifer reads as snowy from below too. Impostors take it by their baked normals. The season shares the wind's buffer, so changing it every frame writes 96 bytes in place and touches no material: a year costs nothing per tree.
