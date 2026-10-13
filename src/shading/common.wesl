@@ -57,7 +57,8 @@ struct FloraUniform {
 // The weather, the same for every tree (`FloraWindBuffer`, `wind_vectors` in shading/mod.rs):
 //   0: wind direction x, direction z, strength, speed
 //   1: bend, flutter, gust strength, turbulence
-//   2: gust frequency, flutter frequency, how wet the trees are (`FloraWetness`), 0
+//   2: gust frequency, flutter frequency, how wet the trees are (`FloraWetness`), the world units
+//      to a metre (`FloraUnits`; see `world_per_metre`)
 //   3: gust front origin x, origin z, direction x, direction z
 //   4: gust front speed, width, strength, start time
 //   5: the season (`FloraSeason`): how far the leaves have turned, the share fallen, snow, the
@@ -75,6 +76,16 @@ struct FloraUniform {
 
 // The see-through fade's slot (`see_through::SEE_THROUGH_SLOT`).
 const SEE_THROUGH: u32 = 23u;
+
+// How many world units make a metre (`FloraUnits`, packed by `wind_vectors` into the fourth lane
+// of slot `UNITS`): 1 in a world in metres. What the shaders size in metres (how far above the
+// roots a push begins, how thin a stem gives way, how far a falling leaf drifts) is multiplied by
+// it; what the buffer holds is already in world units (a body's radius, a gust's width).
+const UNITS: u32 = 2u;
+
+fn world_per_metre() -> f32 {
+    return flora_wind[UNITS].w;
+}
 
 // The foliage pushers (`FoliagePusher`, push.rs), compiled in while one exists (`FLORA_PUSH`).
 // Slot `PUSH` holds how many samples follow (x) and the circle across the ground everything they
@@ -134,13 +145,15 @@ fn push_offset(world: vec3<f32>, origin: vec3<f32>, flex: f32) -> vec3<f32> {
     if weights <= 0.0 {
         return vec3<f32>(0.0);
     }
-    return total / weights * flex * smoothstep(0.15, 0.65, world.y - origin.y);
+    let metre = world_per_metre();
+    return total / weights * flex * smoothstep(0.15 * metre, 0.65 * metre, world.y - origin.y);
 }
 
-// How freely wood of radius `radius` (metres) gives way to a pusher: twigs fully, nothing from
-// 5 cm up.
+// How freely wood of radius `radius` (world units) gives way to a pusher: twigs fully, nothing
+// from 5 cm up (`FloraUnits` scales both).
 fn wood_flex(radius: f32) -> f32 {
-    return 1.0 - smoothstep(0.012, 0.05, radius);
+    let metre = world_per_metre();
+    return 1.0 - smoothstep(0.012 * metre, 0.05 * metre, radius);
 }
 
 // Discard a tree's fragment at `world` (pixel `frag_coord`) when it stands between the fading

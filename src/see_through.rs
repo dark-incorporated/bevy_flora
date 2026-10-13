@@ -14,6 +14,7 @@ use bevy::transform::components::GlobalTransform;
 use crate::gpu::GrowthMaterial;
 use crate::impostor::ImpostorMaterial;
 use crate::shading::{FloraMaterial, FloraWindBuffer, TreeShakes};
+use crate::units::FloraUnits;
 
 /// Put on the game's camera to keep what it follows in view: the parts of trees between the
 /// camera and [`target`](Self::target) dither out around the line of sight. Under a perspective
@@ -57,7 +58,8 @@ pub struct SeeThroughTrees {
     /// What the camera must keep in view, in world space: the player's chest, a unit, the point
     /// under the cursor.
     pub target: Vec3,
-    /// How wide the clear view is at `target`, metres (a radius).
+    /// How wide the clear view is at `target`, metres (a radius; [`FloraUnits`] scales it to the
+    /// world).
     pub radius: f32,
     /// The share of a tree kept at the centre of the clear view, 0..1: 0 (the default) cuts it
     /// all away, 0.35 leaves a third of it dithered in, so what stands in front still reads.
@@ -67,10 +69,12 @@ pub struct SeeThroughTrees {
     pub inner: f32,
     /// Where the cut ends before `target`, metres along the line of sight: `None` (the default)
     /// closes it over the last tenth of the way, `Some(1.2)` cuts only what stands more than
-    /// 1.2 m before the target, however far away the camera is. Nothing behind the target is
+    /// 1.2 m before the target, however far away the camera is ([`FloraUnits`] scales the metres to
+    /// the world). Nothing behind the target is
     /// ever cut.
     pub in_front: Option<f32>,
-    /// A world height below which nothing is cut, so the trunks standing on the ground beside
+    /// A height in world units (not metres: [`FloraUnits`] does not scale it) below which nothing
+    /// is cut, so the trunks standing on the ground beside
     /// the target stay whole: `None` (the default) has no floor.
     pub floor: Option<f32>,
 }
@@ -100,18 +104,21 @@ const NO_FLOOR: f32 = -1.0e30;
 pub(crate) struct SeeThroughCapsule(pub [Vec4; SEE_THROUGH_VECTORS]);
 
 impl SeeThroughCapsule {
-    fn of(camera: Option<(&SeeThroughTrees, &GlobalTransform, Option<&Projection>)>) -> Self {
+    fn of(
+        camera: Option<(&SeeThroughTrees, &GlobalTransform, Option<&Projection>)>,
+        units: &FloraUnits,
+    ) -> Self {
         let Some((fade, at, projection)) = camera else {
             return Self::default();
         };
         let orthographic = matches!(projection, Some(Projection::Orthographic(_)));
         Self([
-            at.translation().extend(fade.radius.max(0.0)),
+            at.translation().extend(units.world(fade.radius.max(0.0))),
             fade.target.extend(if orthographic { 2.0 } else { 1.0 }),
             at.forward().as_vec3().extend(fade.keep.clamp(0.0, 1.0)),
             Vec4::new(
                 fade.inner.clamp(0.0, 0.99),
-                fade.in_front.map_or(-1.0, |d| d.max(0.0)),
+                fade.in_front.map_or(-1.0, |d| units.world(d.max(0.0))),
                 fade.floor.unwrap_or(NO_FLOOR),
                 0.0,
             ),
@@ -124,11 +131,12 @@ impl SeeThroughCapsule {
 /// the shaders cut only in the view drawn from exactly there.
 pub(crate) fn sync_see_through(
     cameras: Query<(&SeeThroughTrees, &GlobalTransform, Option<&Projection>)>,
+    units: Res<FloraUnits>,
     mut capsule: ResMut<SeeThroughCapsule>,
     buffer: Option<Res<FloraWindBuffer>>,
     buffers: Option<ResMut<Assets<ShaderBuffer>>>,
 ) {
-    let now = SeeThroughCapsule::of(cameras.iter().next());
+    let now = SeeThroughCapsule::of(cameras.iter().next(), &units);
     // Look before borrowing mutably: a mutable borrow marks it changed.
     if *capsule == now {
         return;
@@ -278,5 +286,15 @@ mod tests {
         app.update();
         assert!(flags(&app).iter().all(|on| !on), "off again once no camera sees through");
         assert_eq!(slots(&app), [[0.0; 4]; SEE_THROUGH_VECTORS]);
+    }
+
+    #[test]
+    fn the_radius_and_the_distance_in_front_are_metres_the_floor_is_not() {
+        let fade = SeeThroughTrees { radius: 2.0, in_front: Some(1.5), floor: Some(0.45), ..Default::default() };
+        let at = GlobalTransform::default();
+        let metres = SeeThroughCapsule::of(Some((&fade, &at, None)), &FloraUnits::default());
+        let feet = SeeThroughCapsule::of(Some((&fade, &at, None)), &FloraUnits { units_per_metre: 3.0 });
+        assert_eq!((metres.0[0].w, metres.0[3].y, metres.0[3].z), (2.0, 1.5, 0.45));
+        assert_eq!((feet.0[0].w, feet.0[3].y, feet.0[3].z), (6.0, 4.5, 0.45));
     }
 }

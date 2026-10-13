@@ -46,6 +46,7 @@ use crate::gpu::GrowthMaterial;
 use crate::impostor::ImpostorMaterial;
 use crate::pool::PooledTree;
 use crate::shading::{FloraMaterial, FloraWind, FloraWindBuffer, WIND_VECTORS};
+use crate::units::FloraUnits;
 use crate::ProceduralTree;
 
 /// Where the fire's header sits in the shared buffer ([`FloraWindBuffer`]): after the weather, the
@@ -100,15 +101,16 @@ pub(crate) fn burnt_front(fire: Option<&FloraFire>, at: Vec3) -> f32 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FireSpread {
     /// How fast the fire moves through a forest with no wind, metres a second (about; it moves by
-    /// chance from cell to cell).
+    /// chance from cell to cell). Metres: [`FloraUnits`] scales it to the world.
     pub speed: f32,
     /// Seconds a cell burns at full heat before it is charred through (its trees' leaves gone, the
     /// wood black to the top).
     pub burn_time: f32,
     /// Seconds a charred cell's embers take to cool.
     pub cool_time: f32,
-    /// How far from a tree's trunk the fire finds something to burn, metres: crowns closer than
-    /// twice this light each other, and a gap wider than that stops the fire.
+    /// How far from a tree's trunk the fire finds something to burn, metres ([`FloraUnits`]
+    /// scales it to the world): crowns closer than twice this light each other, and a gap wider
+    /// than that stops the fire.
     pub reach: f32,
     /// What burns where no tree stands, 0..1 (grass, litter): 0 keeps the fire to the trees.
     pub ground: f32,
@@ -149,8 +151,8 @@ pub struct FloraFire {
     fuel: Vec<f32>,
     /// When each cell was lit, on the fire's own clock (steps times `STEP`).
     lit: Vec<f32>,
-    /// The tree count, reach and ground the fuel was laid for.
-    fueled_for: Option<(usize, f32, f32)>,
+    /// The tree count, reach, ground and world units the fuel was laid for.
+    fueled_for: Option<(usize, f32, f32, f32)>,
     clock: f32,
     steps: u64,
     burning: usize,
@@ -163,13 +165,13 @@ impl FloraFire {
     /// The most cells along a side: a grid of 512² is 4 MiB of buffer.
     pub const MAX_CELLS: u32 = 512;
 
-    /// A fire over the square `size` metres wide centred on `centre` (world x, z), in 128 cells
-    /// along each side.
+    /// A fire over the square `size` world units wide centred on `centre` (world x, z), in 128
+    /// cells along each side.
     pub fn new(centre: Vec2, size: f32) -> Self {
         Self::with_cells(centre, size, 128)
     }
 
-    /// A fire over the square `size` metres wide centred on `centre` (world x, z), in `cells`
+    /// A fire over the square `size` world units wide centred on `centre` (world x, z), in `cells`
     /// cells along each side (2 to [`MAX_CELLS`](Self::MAX_CELLS)). Smaller cells burn along finer
     /// lines; the buffer the shaders read holds 8 bytes a cell and is written while anything
     /// burns, ten times a second.
@@ -200,7 +202,7 @@ impl FloraFire {
         self
     }
 
-    /// The edge of one cell, metres.
+    /// The edge of one cell, in world units.
     pub fn cell_size(&self) -> f32 {
         self.cell
     }
@@ -246,7 +248,7 @@ impl FloraFire {
         })
     }
 
-    /// Light the cells within `radius` metres of `at` (world x, z; at least the cell `at` is in).
+    /// Light the cells within `radius` (world units) of `at` (world x, z; at least the cell `at` is in).
     /// They burn if a tree stands within [`FireSpread::reach`] of them (or the ground burns) and
     /// spread from there; a cell burnt through does not light again.
     pub fn ignite(&mut self, at: Vec3, radius: f32) {
@@ -262,7 +264,7 @@ impl FloraFire {
         self.settle();
     }
 
-    /// Put the fire out within `radius` metres of `at` (rain, water, a firebreak): the cells keep
+    /// Put the fire out within `radius` (world units) of `at` (rain, water, a firebreak): the cells keep
     /// their char and can be lit again.
     pub fn extinguish(&mut self, at: Vec3, radius: f32) {
         for i in self.cells_within(at, radius) {
@@ -290,7 +292,7 @@ impl FloraFire {
         true
     }
 
-    /// Char the cells within `radius` metres of `at` to at least `char` (0..1) with no fire: an old
+    /// Char the cells within `radius` (world units) of `at` to at least `char` (0..1) with no fire: an old
     /// burn, laid down when a level loads.
     pub fn scorch(&mut self, at: Vec3, radius: f32, char: f32) {
         let char = char.clamp(0.0, 1.0);
@@ -358,11 +360,12 @@ impl FloraFire {
     }
 
     /// Lay the fuel down again from the trees standing at `roots`: within `reach` of a trunk a
-    /// cell is full of fuel, fading to the ground's over the outer half.
-    fn refuel(&mut self, roots: impl Iterator<Item = Vec3>) {
+    /// cell is full of fuel, fading to the ground's over the outer half. `units`: world units to a
+    /// metre, which `reach` (metres) is scaled by.
+    fn refuel(&mut self, roots: impl Iterator<Item = Vec3>, units: f32) {
         let ground = self.spread.ground.clamp(0.0, 1.0);
         self.fuel.fill(ground);
-        let reach = self.spread.reach.max(1.0e-3);
+        let reach = (self.spread.reach * units).max(1.0e-3);
         for root in roots {
             for i in self.cells_within(root, reach) {
                 let (x, z) = (i % self.side as usize, i / self.side as usize);
@@ -410,8 +413,9 @@ impl FloraFire {
 
     /// One step of `STEP` seconds: burning cells kindle and char, burnt ones cool, and every
     /// burning cell lights each neighbour once the fire has had the time to get there (`wind`: the
-    /// wind's direction times its strength).
-    fn step(&mut self, wind: Vec2) {
+    /// wind's direction times its strength; `units`: world units to a metre, which `speed`, in
+    /// metres a second, is scaled by).
+    fn step(&mut self, wind: Vec2, units: f32) {
         let side = self.side as i64;
         let spread = self.spread;
         let now = self.steps as f32 * STEP;
@@ -452,7 +456,7 @@ impl FloraFire {
                 }
                 let way = Vec2::new(dx as f32, dz as f32);
                 let along = spread.wind * wind.dot(way.normalize());
-                let pace = spread.speed.max(1.0e-6) * fuel * (WIND_GAIN * along).exp();
+                let pace = spread.speed.max(1.0e-6) * units * fuel * (WIND_GAIN * along).exp();
                 let arrives = since + way.length() * self.cell / pace * jitter(self.seed, j);
                 if arrives < now + STEP {
                     lit.push((j, arrives));
@@ -546,12 +550,14 @@ pub(crate) fn burn(
     mut fire: ResMut<FloraFire>,
     time: Res<Time>,
     wind: Option<Res<FloraWind>>,
+    units: Res<FloraUnits>,
     trees: Query<&GlobalTransform, AnyTree>,
 ) {
     let state = fire.bypass_change_detection();
-    let laid = (trees.iter().len(), state.spread.reach, state.spread.ground);
+    let units = units.units_per_metre;
+    let laid = (trees.iter().len(), state.spread.reach, state.spread.ground, units);
     if state.fueled_for != Some(laid) {
-        state.refuel(trees.iter().map(GlobalTransform::translation));
+        state.refuel(trees.iter().map(GlobalTransform::translation), units);
         state.fueled_for = Some(laid);
     }
     let wind = wind.map_or(Vec2::ZERO, |wind| wind.direction.normalize_or_zero() * wind.strength.max(0.0));
@@ -559,7 +565,7 @@ pub(crate) fn burn(
     let mut stepped = false;
     while state.clock >= STEP && state.is_burning() {
         state.clock -= STEP;
-        state.step(wind);
+        state.step(wind, units);
         stepped = true;
     }
     if !state.is_burning() {
@@ -708,17 +714,27 @@ pub(crate) fn arm_fire(
 mod tests {
     use super::*;
 
-    /// A fire over 64 m in 2 m cells with a tree every 4 m along z = 0 from x = -24 to 24.
-    fn row_of_trees() -> FloraFire {
-        let mut fire = FloraFire::with_cells(Vec2::ZERO, 64.0, 32);
-        fire.refuel((-6..=6).map(|i| Vec3::new(i as f32 * 4.0, 0.0, 0.0)));
+    /// A fire over 64 m in 2 m cells with a tree every 4 m along z = 0 from x = -24 to 24, in a
+    /// world of `units` world units to the metre (the grid and the trees' places scaled by it).
+    fn row_of_trees_in(units: f32) -> FloraFire {
+        let mut fire = FloraFire::with_cells(Vec2::ZERO, 64.0 * units, 32);
+        fire.refuel((-6..=6).map(|i| Vec3::new(i as f32 * 4.0 * units, 0.0, 0.0)), units);
         fire
     }
 
-    fn run(fire: &mut FloraFire, seconds: f32, wind: Vec2) {
+    /// [`row_of_trees_in`] a world in metres.
+    fn row_of_trees() -> FloraFire {
+        row_of_trees_in(1.0)
+    }
+
+    fn run_in(fire: &mut FloraFire, seconds: f32, wind: Vec2, units: f32) {
         for _ in 0..(seconds / STEP).round() as usize {
-            fire.step(wind);
+            fire.step(wind, units);
         }
+    }
+
+    fn run(fire: &mut FloraFire, seconds: f32, wind: Vec2) {
+        run_in(fire, seconds, wind, 1.0);
     }
 
     #[test]
@@ -792,11 +808,11 @@ mod tests {
         // Trees every 3 m along x, lit at x = 0; when does the fire reach the tree 24 m on?
         let arrival = |cells: u32| {
             let mut fire = FloraFire::with_cells(Vec2::ZERO, 64.0, cells);
-            fire.refuel((0..=10).map(|i| Vec3::new(i as f32 * 3.0, 0.0, 0.0)));
+            fire.refuel((0..=10).map(|i| Vec3::new(i as f32 * 3.0, 0.0, 0.0)), 1.0);
             fire.ignite(Vec3::ZERO, 0.5);
             let target = Vec3::new(24.0, 0.0, 0.0);
             (1..=600).find(|_| {
-                fire.step(Vec2::ZERO);
+                fire.step(Vec2::ZERO, 1.0);
                 fire.heat_at(target) > 0.0
             })
             .map(|steps| steps as f32 * STEP)
@@ -822,6 +838,31 @@ mod tests {
         let (east, west, cells) = reach(Vec2::new(1.0, 0.0));
         assert!(east > west, "downwind {east} trees, upwind {west}");
         assert_eq!(cells, reach(Vec2::new(1.0, 0.0)).2, "the same fire twice");
+    }
+
+    #[test]
+    fn a_fire_in_a_world_in_feet_spreads_as_many_cells_a_second_as_one_in_metres() {
+        const FEET: f32 = 3.2808;
+        // The same row of trees, in a world and a grid 3.2808 times as large, lit in the same place
+        // (inside a cell, not on the corner of four, where a rounding error picks the cell) with the
+        // same wind: `speed` and `reach` are metres, so it is the same fire.
+        let lit = |world: f32, units: f32, seconds: f32| {
+            let mut fire = row_of_trees_in(world);
+            fire.ignite(Vec3::new(-24.5 * world, 0.0, 0.3 * world), 0.5 * world);
+            run_in(&mut fire, seconds, Vec2::ZERO, units);
+            fire.cells().iter().filter(|cell| cell.heat > 0.0 || cell.char > 0.0).count()
+        };
+        let mut last = 0;
+        for seconds in [4.0, 8.0, 12.0, 16.0] {
+            let metres = lit(1.0, 1.0, seconds);
+            let feet = lit(FEET, FEET, seconds);
+            assert!(metres > last, "{metres} cells alight after {seconds} s, {last} before");
+            assert!(metres.abs_diff(feet) <= 1, "{metres} cells alight after {seconds} s in metres, {feet} in feet");
+            last = metres;
+        }
+        // Told nothing of the unit, the fire is 3.2808 times too slow and its reach too short.
+        let unaware = lit(FEET, 1.0, 16.0);
+        assert!(unaware < last / 2, "an unaware fire lit {unaware} cells against {last}");
     }
 
     #[test]
@@ -871,7 +912,7 @@ mod tests {
         let mut fire = FloraFire::with_cells(Vec2::ZERO, 256.0, 512);
         let stand: Vec<Vec3> =
             (0..36).map(|i| Vec3::new(-120.0 + (i % 6) as f32 * 2.5, 0.0, -120.0 + (i / 6) as f32 * 2.5)).collect();
-        fire.refuel(stand.iter().copied());
+        fire.refuel(stand.iter().copied(), 1.0);
         // What a full scan of the grid finds: the burning cells with their centres, and the
         // lowest and highest touched cell.
         let scan = |fire: &FloraFire| {
@@ -916,7 +957,7 @@ mod tests {
         check(&fire);
         let (mut steps, mut most) = (0, 0);
         while fire.is_burning() {
-            fire.step(Vec2::ZERO);
+            fire.step(Vec2::ZERO, 1.0);
             steps += 1;
             most = most.max(fire.burning().count());
             if steps % 25 == 0 {

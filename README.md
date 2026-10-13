@@ -353,6 +353,22 @@ As a resource it is also the ground felling uses: the saw goes in `cut_height` a
 
 *`cargo run --release --example forest -- --trees 3000 --spacing 7 --scatter oak:3,birch:2,pine:2,maple:1 --grove 50 --clearing 30 --terrain 14 --undergrowth shrub:3 --eye 0,2,0 --at -80,8,0 --fov 50 --wind 0.3 --deterministic --screenshot terrain.png`: `--terrain 14` draws hills about 14 m high and plants every tree and shrub at its footing, none on ground steeper than 30°.*
 
+### A world that is not in metres: `FloraUnits`
+
+The crate builds trees in metres, and a game scales them to its world with a `Transform`. A world whose unit is a foot, say, scales its trees by about 3.28, and everything the crate then measures in the world itself has to follow: how fast a tree falls (gravity is 9.81 m/s²), how far a falling leaf drifts, how wide a gust is, how far a fire reaches, how big a pusher is, how far away the levels of detail change. Insert `FloraUnits` with the number of world units to a metre and all of it does:
+
+```rust,no_run
+use bevy::prelude::*;
+use bevy_flora::prelude::*;
+
+fn setup(mut commands: Commands) {
+    // A world in feet: trees are placed with `Transform::from_scale(Vec3::splat(3.2808))`.
+    commands.insert_resource(FloraUnits { units_per_metre: 3.2808 });
+}
+```
+
+The rule, written on every field it touches: a field that sizes or times the crate's own simulation is in **metres** and is multiplied by `units_per_metre` where it meets the world (`FellTree::cut_height`, `TreeNotch::height`, `BuckTree`, `FireSpread::speed` and `reach`, `FoliagePusher::radius` and `height`, `SeeThroughTrees::radius`, `TreeShake::radius`, `GustFront::speed` and `width`, `LodDistances`, `FallingLeaves::autumn_distance`); a position, or a size that addresses the world, is in **world units** (every `at`, `target`, `centre` and `origin`; the size of `FloraFire` and the radius of `ignite`, `extinguish` and `scorch`; `FloraIndex`'s radii and distances; `Scatter`'s area and spacing; `FloraGround`'s heights). The default, 1.0, is a world in metres and changes nothing. Set it before planting: a pooled tree's bands of distance are made when it is spawned. A felled oak lands on the same update in a world in feet as in metres, a fire spreads the same number of cells a second and the default pusher covers the same share of a shrub (tests in `felling.rs`, `fire.rs` and `push.rs`).
+
 ### Leaf shading and wind
 
 Trees drawn by the plugin move in the wind, with no cost to the CPU per frame. `FloraWind` is a global resource: how hard (`strength`), which way (`direction`), how fast (`speed`), how far trees bend (`bend`), how much leaves flutter (`flutter`, `flutter_frequency`), how much the wind comes in gusts (`gust_strength`, `gust_frequency`) and sways across itself (`turbulence`). `TreeParams::wind` is how a species answers it, and the presets set their own: a willow moves more than an oak, a bonsai hardly at all. A `GustFront` is a band of stronger wind that sweeps across the world:
@@ -1010,6 +1026,7 @@ assert!(tree.skeleton.nodes.len() > 1);
 - **Forest scale.** `TreePool` builds a few variants of a tree once, each at three levels of detail made from the skeleton (thin wood dropped, fewer sides and rings, fewer and larger leaves) and a baked camera-facing impostor for the far field; `PooledTree` places them. 100 000 oak trees draw at 7.6 ms a frame, leaf shading, wind and seasons included (see above). A forest of individual `ProceduralTree`s is fine for a few thousand trees, because trees with equal looks share their materials (1 000 oaks: 25 ms a frame) and `TreeLod` draws each at the same three levels (6.5 ms), but each keeps its own meshes, so use a pool beyond that.
 - **Planting forests.** `Scatter` says where the trees stand: trunks at least a spacing apart and otherwise irregular (Poisson disc), species in groves with bending borders, each tree its own yaw, size and variant, a density per spot for roads and clearings and a weight per species and spot for the stands a game places; deterministic per seed. A second scatter of the `Shrub` preset, kept clear of the trunks, makes the undergrowth.
 - **Terrain.** `FloraGround` is your ground's height: trees stand at their footing, where the trunk meets a slope all round (`ScatterPoint::transform_on`), `slope` keeps them off cliffs, and felled trees are cut above the uphill side and land on the hills.
+- **Any world unit.** `FloraUnits { units_per_metre }` tells the crate how many world units make a metre (a world in feet: 3.2808), and everything it measures in the world follows: gravity for felled trees and fallen fruit, how far falling leaves drift, gusts, fire speed and reach, the pusher's size, the see-through radius, the levels of detail's distances. The default, 1.0, changes nothing.
 
 ## Examples
 
