@@ -11,7 +11,8 @@
 //!     [--season <autumn>,<leaf fall>[,<snow>[,<blossom>]]] [--wet <0..1>]
 //!     [--scatter <preset[:weight]>,... [--grove <m>] [--clearing <m>] [--stand <x,z,radius>]]
 //!     [--undergrowth <preset>[:<spacing>]] [--terrain <relief>] [--background] [--tree-lod] [--shadow-radius <m>]
-//!     [--see-through <x,y,z>[,<radius>]] [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>]
+//!     [--see-through <x,y,z>[,<radius>[,<in_front>[,<keep>[,<above_feet>[,<inner>]]]]]] [--ortho <view height>]
+//!     [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>]
 //!     [--push <x,z>]
 //! ```
 //!
@@ -49,8 +50,11 @@
 //! (`BuildInBackground`): they appear a few frames after the start instead of in its first frame.
 //! `--tree-lod` draws them at levels of detail (`TreeLod`, at the `--lod` distances; there is no
 //! impostor), as a pool draws its trees.
-//! `--see-through <x,y,z>[,<radius>]` stands a red stand-in for the player at that point (its
-//! height above the ground) and puts `SeeThroughTrees` on the camera; `--prepass depth` or
+//! `--see-through <x,y,z>[,<radius>[,<in_front>[,<keep>[,<above_feet>[,<inner>]]]]]` stands a red
+//! stand-in for the player at that point (its height above the ground) and puts `SeeThroughTrees`
+//! on the camera (`radius`, `in_front` and `above_feet` in metres, `keep` and `inner` 0 to 1);
+//! `--ortho <view height>` gives the camera an orthographic projection that many metres high, whose
+//! see-through is a cylinder along the view; `--prepass depth` or
 //! `--prepass all` gives the camera a depth prepass, or depth, normal and motion-vector ones.
 //! `--fire <x>,<z>[,<radius>]` puts a `FloraFire` over the forest (cells of about 2 m) and lights
 //! it there, `radius` metres round (4 by default), once the trees are placed; it spreads through
@@ -229,6 +233,12 @@ struct Args {
     /// A player stand-in at this point (above the ground) that the camera sees through the trees
     /// to (`SeeThroughTrees`), and the radius of the clear view.
     see_through: Option<(Vec3, f32)>,
+    /// What else `--see-through` says about the fade: how far in front of the player (metres) it
+    /// begins, the share kept at its centre, the height over the feet below which nothing is cut
+    /// and where its feather starts.
+    see_through_shape: (f32, f32, f32, f32),
+    /// An orthographic camera this many metres high (`--ortho`) instead of the perspective one.
+    ortho: Option<f32>,
     /// The camera's prepasses: 0 none, 1 depth, 2 depth, normal and motion vectors.
     prepass: u8,
 }
@@ -251,7 +261,8 @@ fn usage() -> ! {
          [--season <autumn>,<leaf fall>[,<snow>[,<blossom>]]] [--wet <0..1>] \
          [--scatter <preset[:weight]>,... [--grove <m>] [--clearing <m>] [--stand <x,z,radius>]] \
          [--undergrowth <preset>[:<spacing>]] [--terrain <relief>] [--background] [--tree-lod] [--shadow-radius <m>] \
-         [--see-through <x,y,z>[,<radius>]] [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>] [--push <x,z>]"
+         [--see-through <x,y,z>[,<radius>[,<in_front>[,<keep>[,<above_feet>[,<inner>]]]]]] [--ortho <view height>] \
+         [--prepass <none|depth|all>] [--fire <x,z[,radius]|armed>] [--push <x,z>]"
     );
     std::process::exit(2);
 }
@@ -295,6 +306,8 @@ fn parse_args() -> Args {
         undergrowth: None,
         terrain: None,
         see_through: None,
+        see_through_shape: (0.0, 0.0, 0.0, 0.7),
+        ortho: None,
         prepass: 0,
     };
     let mut it = std::env::args().skip(1);
@@ -418,10 +431,18 @@ fn parse_args() -> Args {
                 let parts: Vec<f32> = list.split(',').filter_map(|p| p.parse().ok()).collect();
                 args.see_through = match parts[..] {
                     [x, y, z] => Some((Vec3::new(x, y, z), 1.5)),
-                    [x, y, z, radius] => Some((Vec3::new(x, y, z), radius)),
+                    [x, y, z, radius, ..] => Some((Vec3::new(x, y, z), radius)),
                     _ => usage(),
                 };
+                let (in_front, keep, above_feet, inner) = (
+                    parts.get(4).copied().unwrap_or(0.0),
+                    parts.get(5).copied().unwrap_or(0.0),
+                    parts.get(6).copied().unwrap_or(0.0),
+                    parts.get(7).copied().unwrap_or(0.7),
+                );
+                args.see_through_shape = (in_front, keep, above_feet, inner);
             }
+            "--ortho" => args.ortho = Some(value(&mut it)),
             "--prepass" => {
                 args.prepass = match it.next().as_deref() {
                     Some("none") => 0,
@@ -667,11 +688,19 @@ fn setup(
     };
     let mut camera = commands.spawn((
         Camera3d::default(),
-        Projection::Perspective(PerspectiveProjection {
-            fov: bench.args.fov.to_radians(),
-            far: extent * 2.0 + 500.0,
-            ..default()
-        }),
+        if let Some(height) = bench.args.ortho {
+            Projection::from(OrthographicProjection {
+                scaling_mode: bevy::camera::ScalingMode::FixedVertical { viewport_height: height },
+                far: extent * 2.0 + 500.0,
+                ..OrthographicProjection::default_3d()
+            })
+        } else {
+            Projection::Perspective(PerspectiveProjection {
+                fov: bench.args.fov.to_radians(),
+                far: extent * 2.0 + 500.0,
+                ..default()
+            })
+        },
         view,
     ));
     if bench.args.is_offscreen() {
@@ -693,7 +722,10 @@ fn setup(
     // `--see-through`: a stand-in for the player at the target, which the camera keeps in view.
     if let Some((target, radius)) = bench.args.see_through {
         let target = target + Vec3::Y * ground.height(target.xz());
-        camera.insert(SeeThroughTrees { target, radius });
+        let (in_front, keep, above_feet, inner) = bench.args.see_through_shape;
+        // The feet are on the ground under the stand-in (its capsule is 1.4 m tall, centred on it).
+        let feet = ground.height(target.xz());
+        camera.insert(SeeThroughTrees { target, radius, keep, in_front, feet, above_feet, inner });
         commands.spawn((
             Mesh3d(meshes.add(Capsule3d::new(0.3, 1.1))),
             MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::srgb(0.85, 0.12, 0.08), ..default() })),

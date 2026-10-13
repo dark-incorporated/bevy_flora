@@ -50,7 +50,7 @@ use crate::impostor::ImpostorSupport;
 use crate::mesh::ATTRIBUTE_LEAF_SWAY;
 use crate::params::{LeafStyle, RenderStyle, TreeParams};
 use crate::push::{PUSH_SLOT, PUSH_VECTORS, PushSlots};
-use crate::see_through::{SEE_THROUGH_SLOT, SeeThroughCapsule};
+use crate::see_through::{SEE_THROUGH_SLOT, SEE_THROUGH_VECTORS, SeeThroughCapsule};
 use crate::units::FloraUnits;
 
 mod share;
@@ -423,9 +423,9 @@ impl FloraUniform {
 }
 
 /// How many `Vec4`s the shared buffer holds before the fire's grid: see [`wind_vectors`], and after
-/// them the two of the see-through fade (`see_through::SEE_THROUGH_SLOT`) and the pushers'
+/// them the four of the see-through fade (`see_through::SEE_THROUGH_SLOT`) and the pushers'
 /// (`push::PUSH_SLOT`).
-pub(crate) const WIND_VECTORS: usize = 7 + 2 * TreeShakes::MAX + 2 + PUSH_VECTORS;
+pub(crate) const WIND_VECTORS: usize = 7 + 2 * TreeShakes::MAX + SEE_THROUGH_VECTORS + PUSH_VECTORS;
 
 /// The shared buffer's slot whose third lane holds [`FloraWetness`] (`sync_wind` writes it).
 pub(crate) const WETNESS_SLOT: usize = 2;
@@ -882,8 +882,9 @@ pub(crate) fn sync_wind(
     let mut packed = wind_vectors(&wind, &season, &shakes, units.units_per_metre).map(|v| v.to_array());
     packed[WETNESS_SLOT][2] = wetness.amount();
     // The see-through fade's slots are written by `sync_see_through`; keep them.
-    packed[SEE_THROUGH_SLOT] = capsule.0[0].to_array();
-    packed[SEE_THROUGH_SLOT + 1] = capsule.0[1].to_array();
+    for (slot, vector) in packed[SEE_THROUGH_SLOT..SEE_THROUGH_SLOT + SEE_THROUGH_VECTORS].iter_mut().zip(capsule.0) {
+        *slot = vector.to_array();
+    }
     // So are the pushers', by `push::sync_pushers`.
     packed[PUSH_SLOT..PUSH_SLOT + PUSH_VECTORS].copy_from_slice(&push.0);
     // Look before borrowing mutably: a mutable borrow marks the buffer changed.
@@ -1109,6 +1110,30 @@ mod tests {
         }
         assert!(snowed, "a year without snow");
         assert_eq!(blossomed, 1.0, "a year without full blossom");
+    }
+
+    /// The `u32` constant `name` of `common.wesl` (`const NAME: u32 = 23u;`).
+    fn wgsl_slot(source: &str, name: &str) -> usize {
+        let line = source
+            .lines()
+            .find(|line| line.starts_with(&format!("const {name}: u32 = ")))
+            .unwrap_or_else(|| panic!("common.wesl has no `const {name}: u32`"));
+        let number = line.rsplit('=').next().unwrap_or_default().trim().trim_end_matches(';').trim_end_matches('u');
+        number.parse().unwrap_or_else(|_| panic!("`{line}` is not a slot"))
+    }
+
+    #[test]
+    fn the_shaders_slots_are_the_buffers_slots() {
+        use crate::fire::FIRE_SLOT;
+        let source = include_str!("common.wesl");
+        for (name, slot) in
+            [("UNITS", UNITS_SLOT), ("SEE_THROUGH", SEE_THROUGH_SLOT), ("PUSH", PUSH_SLOT), ("FIRE", FIRE_SLOT)]
+        {
+            assert_eq!(wgsl_slot(source, name), slot, "common.wesl's {name} is not the buffer's slot");
+        }
+        // What the slots add up to: 7 of weather and shake header, 8 shakes of two, the fade's
+        // four, the pushers' 33; the fire's header follows.
+        assert_eq!((SEE_THROUGH_SLOT, PUSH_SLOT, FIRE_SLOT, WIND_VECTORS), (23, 27, 60, 60));
     }
 
     #[test]

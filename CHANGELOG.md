@@ -7,7 +7,9 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
-Worlds that are not in metres (#50). New API only.
+Worlds that are not in metres (#50) and a see-through fade that can match the one a game draws on
+its own meshes (#52). The first adds API only; the second adds fields to a public struct and
+changes a dither pattern, noted below.
 
 ### Added
 
@@ -33,6 +35,34 @@ Worlds that are not in metres (#50). New API only.
   logs are the same logs the same gap apart, a fire spreads the same number of cells a second, the
   default pusher covers the same share of a shrub, falling leaves fall for as long, and the bands
   scale. `FloraUnits` is in the crate root and the prelude.
+- **`SeeThroughTrees` takes a shape** (#52): `keep` (the share of a tree that stays drawn at the
+  centre of the clear view, 0 by default, 0.35 for a wall or a crown that must stay readable),
+  `in_front` (metres: how far before the target the cut begins, along the view for an
+  orthographic camera, along the line of sight for a perspective one, where it replaces the
+  closing over the last tenth of the way), `feet` and `above_feet` (nothing lower than
+  `above_feet` metres over `feet` is cut: the foot of a trunk beside the player stays) and
+  `inner` (where the feather starts, a share of the radius, 0.7 by default). The fade now picks
+  its shape from the projection: a cylinder along the view direction for an orthographic camera
+  (every ray is parallel; the cone narrowing toward the camera was wrong there), the cone as
+  before for a perspective one. The defaults keep today's cut, `radius` included.
+  `SeeThroughTrees::opacity_at(world, camera, orthographic, units)` is the CPU mirror of the
+  shader, for a game that must read the same circle. Tests hold the issue's acceptance cases
+  (35% kept 10 ft in front, whole behind the target and under 1.5 ft over the feet, shadow maps
+  untouched), and a test reads `common.wesl`'s slot constants against the Rust ones. `forest
+  --see-through` takes the new fields (`<x,y,z>,<radius>,<in_front>,<keep>,<above_feet>,<inner>`)
+  and `forest --ortho <view height>` gives the camera an orthographic projection.
+
+### Changed
+
+- **Breaking: `SeeThroughTrees` has seven fields.** A struct literal needs `..default()` (the
+  README's already has it).
+- **The dither pattern of the see-through fade is mirrored**: the cut is now where
+  `opacity < dither` (opacity = what stays), where it was where `open > dither`, so a cut shows the
+  same share of pixels as before through the pattern's other half. Nothing else about the
+  defaults changes.
+- **The shared buffer's layout**: the fade takes four slots (23 to 26: the camera and radius, the
+  target, the shape and a spare), so the pushers' slots begin at 27 and the fire's at 60
+  (`WIND_VECTORS` 60). Nothing public reads them; a game that read the buffer itself must move.
 
 ## [0.35.0] - 2026-10-13
 

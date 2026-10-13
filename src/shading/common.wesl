@@ -66,10 +66,12 @@ struct FloraUniform {
 //   6: the shakes (`TreeShakes`): the render time the last one ends (-1: none), 0, 0, 0
 //   7 + 2i, 8 + 2i for i in 0..8: shake i's (at x, at z, radius, strength) and (direction x,
 //      direction z, start time, duration); all zero for an empty slot
-//   23, 24: the see-through fade (`SeeThroughTrees`): the fading camera's position and the
-//      clear radius at the target; the target and 1 while a camera has one (all zero otherwise)
-//   25: the foliage pushers (`FoliagePusher`): see `PUSH`
-//   58: the fire's header (`FloraFire`), then its grid: see `FIRE`
+//   23-26: the see-through fade (`SeeThroughTrees`, `SEE_THROUGH`): the fading camera's position
+//      and the clear radius at the target; the target and 1 while a camera has one (all zero
+//      otherwise); what is kept at the centre, how far in front of the target the cut begins,
+//      the height below which nothing is cut and where the feather starts; spare
+//   27: the foliage pushers (`FoliagePusher`): see `PUSH`
+//   60: the fire's header (`FloraFire`), then its grid: see `FIRE`
 @group(constants::MATERIAL_BIND_GROUP) @binding(102) var<storage, read> flora_wind: array<vec4<f32>>;
 
 // The see-through fade's slot (`see_through::SEE_THROUGH_SLOT`).
@@ -91,7 +93,7 @@ fn world_per_metre() -> f32 {
 // vectors: the middle of a body (x, y, z) and its radius, and half its height and its strength
 // times the sample's weight. A body is sampled where it is and where it was over the last half
 // second, ever weaker, so what it parted closes up behind it.
-const PUSH: u32 = 25u;
+const PUSH: u32 = 27u;
 
 // The share of a pusher's radius around its axis whose foliage spreads over its breadth: what is
 // nearer still stays inside the body, which hides it, and a leaf across the axis stretches by
@@ -155,27 +157,60 @@ fn wood_flex(radius: f32) -> f32 {
 }
 
 // Discard a tree's fragment at `world` (pixel `frag_coord`) when it stands between the fading
-// camera and its target, in a cone around the line of sight a third as wide at the camera as
-// at the target: fully within 70% of the radius, dithered over the rest, and closing over the
-// last tenth of the way so nothing behind the target is cut. Only the fading camera's own views
-// cut: `view_position` is where the view being drawn looks from, so shadow maps and other
-// cameras keep the whole tree. Compiled in only while a camera sees through (`FLORA_SEE_THROUGH`).
+// camera and its target, around the line of sight: in a cone a third as wide at the camera as at
+// the target for a perspective camera, in a cylinder along the view for an orthographic one
+// (`SeeThroughTrees`). What stays of the surface is `mix(keep, 1, smoothstep(inner * radius,
+// radius, distance from the line))` through a 4x4 ordered dither. A perspective camera closes the
+// cut over the last tenth of the way to the target, or at `in_front` of it when that is given; an
+// orthographic one cuts only what is more than `in_front` before the target along the view.
+// Nothing lower than `floor` is cut. Only the fading camera's own views cut: `view_position` is
+// where the view being drawn looks from, so shadow maps and other cameras keep the whole tree.
+// Compiled in only while a camera sees through (`FLORA_SEE_THROUGH`). `see_through::opacity` is
+// the same on the CPU.
 fn see_through(world: vec3<f32>, frag_coord: vec2<f32>, view_position: vec3<f32>) {
     let eye = flora_wind[SEE_THROUGH];
     // (`target` is a reserved word in WGSL.)
     let goal = flora_wind[SEE_THROUGH + 1u];
+    // (keep, in_front, floor, inner)
+    let shape = flora_wind[SEE_THROUGH + 2u];
     if goal.w < 0.5 || any(abs(view_position - eye.xyz) > vec3<f32>(1.0e-3)) {
         return;
     }
-    let line = goal.xyz - eye.xyz;
-    let t = dot(world - eye.xyz, line) / max(dot(line, line), 1.0e-6);
-    if t <= 0.0 || t >= 1.0 {
+    if world.y < shape.z {
         return;
     }
-    let radius = eye.w * mix(1.0 / 3.0, 1.0, t);
-    let off = distance(world, eye.xyz + line * t);
-    let open = (1.0 - smoothstep(0.7 * radius, radius, off)) * (1.0 - smoothstep(0.9, 1.0, t));
-    if open > ordered_dither(frag_coord) {
+    var radius = eye.w;
+    var off = 0.0;
+    var closing = 1.0;
+    if view_bindings::view.clip_from_view[3].w == 1.0 {
+        // Orthographic: every ray is parallel, so a cylinder along the view, cutting what stands
+        // before the target by more than `in_front`.
+        let dir = normalize(-view_bindings::view.world_from_view[2].xyz);
+        let rel = world - goal.xyz;
+        let along = dot(rel, dir);
+        if -along <= max(shape.y, 0.0) {
+            return;
+        }
+        off = length(rel - dir * along);
+    } else {
+        let line = goal.xyz - eye.xyz;
+        let t = dot(world - eye.xyz, line) / max(dot(line, line), 1.0e-6);
+        if t <= 0.0 || t >= 1.0 {
+            return;
+        }
+        if shape.y > 0.0 {
+            if (1.0 - t) * length(line) <= shape.y {
+                return;
+            }
+        } else {
+            closing = 1.0 - smoothstep(0.9, 1.0, t);
+        }
+        radius = eye.w * mix(1.0 / 3.0, 1.0, t);
+        off = distance(world, eye.xyz + line * t);
+    }
+    let feather = smoothstep(shape.w * radius, radius, off);
+    let opacity = 1.0 - (1.0 - mix(shape.x, 1.0, feather)) * closing;
+    if opacity < ordered_dither(frag_coord) {
         discard;
     }
 }
@@ -268,7 +303,7 @@ fn leaf_season_tint(sway: vec4<f32>, color: vec4<f32>) -> vec3<f32> {
 // anything); `FIRE + 1` the world x, z rectangle (min x, min z, max x, max z) outside which every
 // cell is empty. The cells follow two to a vector (char, heat, char, heat), row by row along x,
 // rows along z.
-const FIRE: u32 = 58u;
+const FIRE: u32 = 60u;
 
 // The cell (x, z) of a grid `side` cells wide: (char, heat), nothing off the grid.
 fn fire_cell(x: i32, z: i32, side: i32) -> vec2<f32> {
