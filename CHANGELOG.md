@@ -5,10 +5,12 @@ All notable changes to `bevy_flora`. The format follows
 [Semantic Versioning](https://semver.org/). Before 1.0, a minor version bump
 (`0.x`) may break the API.
 
-## [Unreleased]
+## [0.37.0] - 2026-10-13
 
-Colour looks for pools, and recolouring at runtime (issue #54), for a game whose palette changes
-with the time of day, the weather or the map it is showing.
+A forest in the colours of the game and a world in its units: low-poly conifers, undergrowth,
+recolouring, pooled deadfall and any world unit (issues #49, #50, #54, #56 and #57). The crown
+and trunk styles are new fields of `TreeParams`, `TreeStump::tree` is an `Option` and a pool's
+materials are a `Vec`, so a minor release.
 
 ### Added
 
@@ -58,11 +60,6 @@ with the time of day, the weather or the map it is showing.
   `FloraIndex`, shakes and sheds nothing, is fire fuel, and takes `NotShadowCaster` like a pooled
   tree. `BuckTree` on a lying one makes it bucked in place. `felling` helpers it shares with
   `buck_trees` (`lay_log`, `trunk_alone`, `hinge_point`, `rest_angle`) are `pub(crate)`.
-
-### Changed
-
-- **Breaking: `TreeStump::tree` is an `Option<Entity>`** (#56): `None` for the stump of a pooled
-  deadfall, which no tree was cut from.
 - **Hull crowns and prism trunks** (#49). `TreeParams::crown` (`CrownStyle`, default `Leaves`) can be
   `Hull { tiers, sides, lift, jitter }`: the leaf cards are not drawn and a faceted stack of cones
   is wrapped round the leaf cloud instead (`tiers * sides * 2` flat triangles), and
@@ -145,6 +142,11 @@ with the time of day, the weather or the map it is showing.
 
 ### Changed (breaking)
 
+- **`TreeStump::tree` is an `Option<Entity>`** (#56): `None` for the stump of a pooled
+  deadfall, which no tree was cut from.
+- **`TreeParams` has two new fields, `crown` and `trunk_style`** (#49), and `CrownStyle::Hull` four
+  (`tiers`, `sides`, `lift`, `jitter`) and a fifth, `trunk_only`: a struct literal of `TreeParams`
+  needs `..` (every preset has them, as `CrownStyle::Leaves` and `TrunkStyle::Round`).
 - **`TreePool::materials` is a `Vec<PoolMaterials>`, one pair per look** (was an `Option`: empty
   where it was `None`). `TreePool` has a new public field, `looks`, which `build_pool` fills with
   look 0.
@@ -154,7 +156,37 @@ with the time of day, the weather or the map it is showing.
   binding 4.
 - **Impostors are baked neutral grey** (linear 0.5, wood and leaves alike) and the shader
   multiplies in twice the look's linear colour where the picture holds wood or leaves, before the
-  season recolours the leaves: a look needs no new bake, and look 0 draws the pool's colours.
+  season recolours the leaves: a look needs no new bake, and look 0 draws the pool's colours to
+  within 8-bit quantization (a mean 1.7 of 255 on the pixels of impostors, 22 at the 99th
+  percentile, 52 at most on their edges, against 0.36.0's baked colours).
+
+### Measured
+
+- **Look.** The 441 gallery scenarios the release has had since 0.32.0 render pixel for pixel as
+  0.36.0's below their label (the counter in it reads 491 where it read 441) on the CPU and with
+  `--gpu`, but the painterly and toon maple and oak, which differ in one pixel (by 28 of 255 at
+  most); `compare_gallery` says a mean difference of 0.000 of 255 for all 441, no `ERROR`. The 50
+  new scenarios (hull spruce, fir and cypress at ages 2 and 5, mature and under snow; the juniper
+  and the fern through every per-preset group) carry no flag. Over all 491 the CPU and `--gpu`
+  renders differ by a mean 0.08 of 255 (79 PNGs byte for byte, the worst a young shrub at 2.11).
+  The growth, grove, seasons and fire clips are frame for frame 0.36.0's and push but one frame by
+  a pixel; shake, fell, chop, harvest, the playground's demo and the isometric demo differ: the
+  leaves that fall drop in another order from the first knock (frames 6 to 23 on), every tree, stump,
+  log and apple where it was, and in the isometric demo's zoomed-out frames (88 on) the impostors'
+  colours move by the quantization above.
+- **Cost** (`forest --offscreen --deterministic`, Apple M4 Pro, bmb, interleaved with 0.36.0 in
+  seven rounds on a machine other jobs shared, load average 6 to 60, so only the best and the
+  median of the seven are worth quoting): 1 000 individual oaks 24.58 ms best and 28.54 median
+  (0.36.0: 26.24 and 28.81), 100 000 pooled oaks 7.80 and 9.44 ms (7.99 and 18.64), 1 000 oaks seen
+  through (`--see-through`) 30.70 and 33.96 ms (27.83 and 31.91). Six more see-through pairs under
+  that load, 33.42 against 37.61, 28.40 against 45.48, 29.21 against 28.62, 30.07 against 31.31,
+  30.93 against 32.43 and, with the machine quietest, 31.76 against 32.53 ms, put the new build
+  about 1.4 ms (4%, the median of the six differences) behind 0.36.0 with the fade on and level
+  with it without; a guess is the unlit branch in the fragment stage, which every flora material
+  now carries, where the fade turns early depth rejection off. Not re-measured on a quiet machine.
+- **Clips.** All eleven README clips were re-recorded (growth, grove, seasons, shake, fell, fire,
+  push, chop, harvest, the playground and the isometric demo) and their first, middle and last
+  frames looked at.
 
 ## [0.36.0] - 2026-10-13
 
@@ -2280,6 +2312,7 @@ The first release.
   four-view renders and per-scenario statistics for visual QA) and `capture_growth` (the README
   clip).
 
+[0.37.0]: https://github.com/Ladvien/bevy_flora/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/Ladvien/bevy_flora/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/Ladvien/bevy_flora/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/Ladvien/bevy_flora/compare/v0.33.0...v0.34.0

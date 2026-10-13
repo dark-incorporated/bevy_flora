@@ -1,11 +1,11 @@
 [package]
 name = "bevy_flora"
-version = "0.36.0"
+version = "0.37.0"
 edition = "2024"
 # Bevy 0.20's own crates declare 1.97.1, and this crate cannot compile without
 # them, so claiming less would be a floor nothing can stand on.
 rust-version = "1.97.1"
-description = "Parametric, stylized procedural trees and shrubs for Bevy that grow over time: 18 presets, bent and forking branches, CC0 bark and leaf scans, painterly and toon looks, deterministic per seed."
+description = "Parametric, stylized procedural trees and shrubs for Bevy that grow over time: 20 presets, bent and forking branches, CC0 bark and leaf scans, painterly and toon looks, deterministic per seed."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Ladvien/bevy_flora"
 documentation = "https://docs.rs/bevy_flora"
