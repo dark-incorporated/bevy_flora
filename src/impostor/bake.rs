@@ -23,7 +23,7 @@ use bevy::camera::{
     Camera, Camera3d, CameraOutputMode, ClearColorConfig, OrthographicProjection, Projection,
     RenderTarget, ScalingMode, Viewport,
 };
-use bevy::color::Color;
+use bevy::color::{Color, LinearRgba};
 use bevy::core_pipeline::tonemapping::DebandDither;
 use bevy::ecs::prelude::*;
 use bevy::image::Image;
@@ -38,10 +38,10 @@ use bevy::transform::components::Transform;
 
 use super::material::ImpostorBakeMaterial;
 use super::{
-    IMPOSTOR_VIEWS, ImpostorAtlas, ImpostorFrame, ImpostorMaterial, TILE_PIXELS, atlas_image,
+    IMPOSTOR_VIEWS, ImpostorAtlas, ImpostorFrame, ImpostorMaterial, ImpostorTint, TILE_PIXELS, atlas_image,
     linearize_surface, surface_image,
 };
-use crate::pool::{PoolVariant, TreePool};
+use crate::pool::{PoolRecolors, PoolVariant, TreePool};
 use crate::shading::{FloraUniform, FloraWindBuffer};
 
 /// The render layer the colour pictures are drawn on; nothing else should use it.
@@ -66,6 +66,9 @@ const BAKE_ORIGIN: Vec3 = Vec3::new(0.0, 0.0, 30_000.0);
 const CAMERA_DISTANCE: f32 = 100.0;
 /// A capture with fewer opaque pixels than this share of the atlas is empty.
 const MIN_COVERAGE: f32 = 0.01;
+/// The linear grey the pictures are baked in: half, so that a tint of twice a colour gives it back
+/// (and a colour up to twice as bright as 1.0 still fits).
+const NEUTRAL_GREY: f32 = 0.5;
 
 /// Baking state: the scenes in flight and the variants that are settled.
 #[derive(Resource, Default)]
@@ -152,13 +155,15 @@ pub(crate) fn start_impostor_bakes(
             let frame = ImpostorFrame::new(variant.height, variant.radius);
             let slot = bakes.started;
             bakes.started += 1;
-            let wood = pool.params.trunk_color.to_linear();
-            let leaf = pool.params.foliage.color.to_linear();
+            // Neutral grey: the colours of a look are a tint on the finished picture
+            // (`ImpostorMaterial::tint`), so one picture serves every look and a recolouring
+            // needs no new bake.
+            let grey = LinearRgba::rgb(NEUTRAL_GREY, NEUTRAL_GREY, NEUTRAL_GREY);
             let materials = BakeMaterials {
-                wood_colour: bake_materials.add(ImpostorBakeMaterial::colour(wood)),
-                leaf_colour: bake_materials.add(ImpostorBakeMaterial::colour(leaf)),
-                wood_surface: bake_materials.add(ImpostorBakeMaterial::surface(wood, 0.0)),
-                leaf_surface: bake_materials.add(ImpostorBakeMaterial::surface(leaf, 1.0)),
+                wood_colour: bake_materials.add(ImpostorBakeMaterial::colour(grey)),
+                leaf_colour: bake_materials.add(ImpostorBakeMaterial::colour(grey)),
+                wood_surface: bake_materials.add(ImpostorBakeMaterial::surface(grey, 0.0)),
+                leaf_surface: bake_materials.add(ImpostorBakeMaterial::surface(grey, 1.0)),
             };
             let scene = spawn_scene(&mut commands, variant, &frame, &target, &materials, slot);
             bakes.jobs.push(Job {
@@ -322,6 +327,7 @@ fn finish_bake(
     mut pools: ResMut<Assets<TreePool>>,
     mut baked: ResMut<ImpostorsBaked>,
     wind: Res<FloraWindBuffer>,
+    recolors: Res<PoolRecolors>,
 ) {
     let Ok(shot) = shots.get(captured.entity) else {
         return;
@@ -376,7 +382,6 @@ fn finish_bake(
     if let (true, Some(pixels)) = (enough, pixels)
         && let Some(mut pool) = pools.get_mut(job.pool)
     {
-        let flora = FloraUniform::new(&pool.params);
         let albedo = images.add(atlas_image(&pixels[..row], width, TILE_PIXELS));
         let surface = images.add(surface_image(
             &linearize_surface(&pixels[row..]),
@@ -384,18 +389,27 @@ fn finish_bake(
             width,
             TILE_PIXELS,
         ));
+        // The pictures are neutral grey: one material per look tints them to its colours.
+        let looks = (0..pool.looks.len() as u32)
+            .map(|look| {
+                let colors = recolors.colors(job.pool, look, &pool);
+                materials.add(ImpostorMaterial::new(
+                    albedo.clone(),
+                    surface.clone(),
+                    IMPOSTOR_VIEWS,
+                    pool.params.style,
+                    FloraUniform::new(&colors.apply(&pool.params)),
+                    &wind,
+                    ImpostorTint::new(colors.wood, colors.leaves),
+                    colors.unlit,
+                ))
+            })
+            .collect();
         pool.variants[job.variant].impostor = Some(ImpostorAtlas {
             views: IMPOSTOR_VIEWS,
             size: job.frame.size,
             center_y: job.frame.center_y,
-            material: materials.add(ImpostorMaterial::new(
-                albedo.clone(),
-                surface.clone(),
-                IMPOSTOR_VIEWS,
-                pool.params.style,
-                flora,
-                &wind,
-            )),
+            materials: looks,
             quad: meshes.add(job.frame.quad()),
             albedo,
             surface,

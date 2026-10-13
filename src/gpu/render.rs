@@ -118,6 +118,7 @@ fn sync_growth(materials: &mut Assets<GrowthMaterial>, handle: &Handle<GrowthMat
     let (detail_color, detail_normal) = surface.detail();
     if let Some(mut material) = materials.get_mut(handle)
         && (material.base.base_color != surface.color
+            || material.base.unlit != surface.unlit
             || material.extension.flora != surface.uniform
             || material.extension.detail_color != detail_color
             || material.extension.detail_normal != detail_normal
@@ -125,6 +126,7 @@ fn sync_growth(materials: &mut Assets<GrowthMaterial>, handle: &Handle<GrowthMat
             || material.extension.style != surface.style)
     {
         material.base.base_color = surface.color;
+        material.base.unlit = surface.unlit;
         material.extension.flora = surface.uniform;
         material.extension.detail_color = detail_color;
         material.extension.detail_normal = detail_normal;

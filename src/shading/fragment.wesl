@@ -8,6 +8,7 @@ import bevy_pbr::{
         forward_io::{VertexOutput, FragmentOutput},
         pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
         mesh_view_bindings::view,
+        pbr_types,
     },
     decal::clustered::apply_decals,
 };
@@ -142,20 +143,26 @@ fn fragment(
     apply_decals(&pbr_input);
 
     var out: FragmentOutput;
+    // An unlit look (`PoolColors::unlit`) shows its colour as the weather and the fire left it
+    // (wet, snowed, charred): no lighting, no light through the leaf, no ink rim.
+    if (pbr_input.material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT) != 0u {
+        out.color = pbr_input.material.base_color;
+    } else {
 @if(FLORA_TOON)
-    out.color = toon_lighting(pbr_input);
+        out.color = toon_lighting(pbr_input);
 @else
-    out.color = apply_pbr_lighting(pbr_input);
+        out.color = apply_pbr_lighting(pbr_input);
 @if(FLORA_LEAF)
-    // A hull crown's facets let no light through (`hull_surface`): only a leaf card does.
-    if flora.tree.y < 0.5 {
-        out.color = vec4<f32>(
-            out.color.rgb + view.exposure * leaf_transmission(pbr_input, in.uv_b.y, flower) * select(1.0 - snowed, 0.0, fruit),
-            out.color.a
-        );
-    }
+        // A hull crown's facets let no light through (`hull_surface`): only a leaf card does.
+        if flora.tree.y < 0.5 {
+            out.color = vec4<f32>(
+                out.color.rgb + view.exposure * leaf_transmission(pbr_input, in.uv_b.y, flower) * select(1.0 - snowed, 0.0, fruit),
+                out.color.a
+            );
+        }
 @if(FLORA_TOON)
-    out.color = vec4<f32>(out.color.rgb * toon_rim(pbr_input.world_normal, pbr_input.V), out.color.a);
+        out.color = vec4<f32>(out.color.rgb * toon_rim(pbr_input.world_normal, pbr_input.V), out.color.a);
+    }
     // Embers and burning leaves give light of their own, after the toon rim, which would darken it.
 @if(FLORA_FIRE)
     out.color = vec4<f32>(out.color.rgb + view.exposure * ember, out.color.a);

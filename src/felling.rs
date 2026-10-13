@@ -19,6 +19,8 @@
 //! Before it falls, a tree can be notched: a [`TreeNotch`] carves an axe's wedge out of its
 //! trunk, deeper with each blow, and a tree felled with one is cut at the notch's floor.
 
+use std::sync::Arc;
+
 use bevy::asset::{Assets, Handle};
 use bevy::camera::visibility::{Visibility, VisibilityRange};
 use bevy::ecs::prelude::*;
@@ -39,7 +41,8 @@ use crate::mesh::trunk::{trunk_mesh_with, trunk_pieces};
 use crate::pipeline::{aged_skeleton, build_aged};
 use crate::plugin::{CoarseLevel, Growing, Paint, ProceduralTree, TreeAge, TreeRender, paint_child};
 use crate::shape::WoodCapsule;
-use crate::pool::{PooledShapeFilled, PooledTree, PooledTreeSpawned, TreePool};
+use crate::pool::{PoolColors, PoolRecolors, PooledLook, PooledShapeFilled, PooledTree, PooledTreeSpawned, TreePool};
+use crate::recolor::{CutWood, TreeColors};
 use crate::shading::{FloraMaterial, FloraWindBuffer, SharedFlora, TextureLibrary, TreeShake, TreeShakes};
 use crate::params::TreeParams;
 use crate::skeleton::{NodeKind, Skeleton, trunk_wobble};
@@ -83,6 +86,21 @@ pub struct Felled {
     pub at_rest: bool,
     #[reflect(ignore)]
     fall: Fall,
+}
+
+impl Felled {
+    /// Whether it has hit the ground: its children wear the materials that do not sway.
+    pub(crate) fn landed(&self) -> bool {
+        self.fall.landed
+    }
+
+    /// Change the materials it takes on landing (`trunk` is the entity of its wood; the rest are
+    /// leaves), for a recolouring while it still falls.
+    pub(crate) fn restyle_still(&mut self, trunk: Entity, wood: &Handle<FloraMaterial>, leaves: &Handle<FloraMaterial>) {
+        for (child, material) in &mut self.fall.still {
+            *material = if *child == trunk { wood.clone() } else { leaves.clone() };
+        }
+    }
 }
 
 /// The stump a felled tree left: the wood below the cut and its cut face, where the tree stood.
@@ -151,23 +169,38 @@ pub struct TreeBucked {
 }
 
 /// The material of every cut face, stumps, felled trees and logs: the end-grain picture, made
-/// the first time a tree is cut.
+/// the first time a tree is cut, and its unlit twin for trees in an unlit look
+/// ([`PoolColors::unlit`](crate::PoolColors::unlit)).
 #[derive(Resource, Default)]
-pub(crate) struct CutFace(Option<Handle<StandardMaterial>>);
+pub(crate) struct CutFace {
+    lit: Option<Handle<StandardMaterial>>,
+    unlit: Option<Handle<StandardMaterial>>,
+}
 
 impl CutFace {
-    fn get(&mut self, textures: &mut TextureLibrary, materials: &mut Assets<StandardMaterial>) -> Handle<StandardMaterial> {
-        self.0
-            .get_or_insert_with(|| {
-                let grain = textures.end_grain();
-                materials.add(StandardMaterial {
-                    base_color: if grain.is_some() { bevy::color::Color::WHITE } else { END_GRAIN_COLOR },
-                    base_color_texture: grain,
-                    perceptual_roughness: 0.85,
-                    ..Default::default()
-                })
+    pub(crate) fn get(
+        &mut self,
+        textures: &mut TextureLibrary,
+        materials: &mut Assets<StandardMaterial>,
+        unlit: bool,
+    ) -> Handle<StandardMaterial> {
+        let slot = if unlit { &mut self.unlit } else { &mut self.lit };
+        slot.get_or_insert_with(|| {
+            let grain = textures.end_grain();
+            materials.add(StandardMaterial {
+                base_color: if grain.is_some() { bevy::color::Color::WHITE } else { END_GRAIN_COLOR },
+                base_color_texture: grain,
+                perceptual_roughness: 0.85,
+                unlit,
+                ..Default::default()
             })
-            .clone()
+        })
+        .clone()
+    }
+
+    /// Whether `handle` is one of the cut face materials.
+    pub(crate) fn is_face(&self, handle: &Handle<StandardMaterial>) -> bool {
+        self.lit.as_ref() == Some(handle) || self.unlit.as_ref() == Some(handle)
     }
 }
 
@@ -270,6 +303,7 @@ pub(crate) fn start_felling(
     mut textures: TextureLibrary,
     wind: Option<Res<FloraWindBuffer>>,
     pools: Option<Res<Assets<TreePool>>>,
+    recolors: Res<PoolRecolors>,
     ground: Option<Res<FloraGround>>,
     mut cut_face: ResMut<CutFace>,
     trees: Query<(
@@ -284,17 +318,19 @@ pub(crate) fn start_felling(
         Has<Growing>,
         Option<&TreeNotch>,
         Option<&NotchCarved>,
+        Option<&PooledLook>,
+        Option<&TreeColors>,
     )>,
 ) {
-    for (entity, fell, transform, tree, age, render, pooled, gpu, growing, notch, carved) in &trees {
+    for (entity, fell, transform, tree, age, render, pooled, gpu, growing, notch, carved, look, colors) in &trees {
         if let Some(pooled) = pooled {
             let Some(pool) = pools.as_deref().and_then(|pools| pools.get(&pooled.pool)) else { continue };
-            let params = pool.tree_params(pooled.variant);
+            let (params, colors) = pooled_to_tree(pool, pooled, look, &recolors);
             commands
                 .entity(entity)
                 .despawn_related::<Children>()
-                .remove::<(PooledTree, PooledTreeSpawned, PooledShapeFilled)>()
-                .insert((ProceduralTree(params), TreeAge(pool.age)));
+                .remove::<(PooledTree, PooledTreeSpawned, PooledShapeFilled, PooledLook)>()
+                .insert((ProceduralTree(params), TreeAge(pool.age), TreeColors(colors)));
             continue;
         }
         let Some(tree) = tree else { continue };
@@ -333,10 +369,13 @@ pub(crate) fn start_felling(
         let cut_y = notch.map_or_else(|| saw_height(transform, &tree.0, ground.as_deref(), fell.cut_height), |n| n.floor);
         let above = cut(&built.trunk, cut_y, true);
         let below = cut(&built.trunk, cut_y, false);
-        let face = cut_face.get(&mut textures, &mut materials);
+        let unlit = colors.is_some_and(|colors| colors.0.unlit);
+        let painted = colors.map_or_else(|| tree.0.clone(), |colors| colors.0.apply(&tree.0));
+        let face = cut_face.get(&mut textures, &mut materials, unlit);
 
         // The stump: the wood below the cut and its face, where the tree stands.
-        let stump = commands.spawn((*transform, Visibility::Inherited, TreeStump { tree: entity })).id();
+        let cut_wood = CutWood { params: Arc::new(painted.clone()), unlit, calm: false };
+        let stump = commands.spawn((*transform, Visibility::Inherited, TreeStump { tree: entity }, cut_wood)).id();
         let mut wood = commands.spawn((Mesh3d(meshes.add(below.kept.into_bevy_mesh())), ChildOf(stump)));
         paint_child(&mut wood, &paint, false);
         if !below.faces.is_empty() {
@@ -380,10 +419,10 @@ pub(crate) fn start_felling(
         // still moves it as it did (a change there would show).
         let mut still = Vec::new();
         if let (Paint::Flora { .. }, Some(wind)) = (&paint, wind.as_deref()) {
-            let calm = TreeParams { wind: crate::WindResponse { sway: 0.0, ..tree.0.wind.clone() }, ..tree.0.clone() };
-            still.push((render.trunk, shared.resolve(&mut flora, &textures.wood(&calm), wind)));
+            let calm = calm_params(&painted);
+            still.push((render.trunk, shared.resolve(&mut flora, &textures.wood(&calm).with_unlit(unlit), wind)));
             if render.foliage.is_some() {
-                let leaves = shared.resolve(&mut flora, &textures.leaves(&calm), wind);
+                let leaves = shared.resolve(&mut flora, &textures.leaves(&calm).with_unlit(unlit), wind);
                 for (child, _) in render.foliage.iter().chain(&render.flowers) {
                     still.push((*child, leaves.clone()));
                 }
@@ -421,6 +460,7 @@ pub(crate) fn carve_notches(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut textures: TextureLibrary,
     pools: Option<Res<Assets<TreePool>>>,
+    recolors: Res<PoolRecolors>,
     ground: Option<Res<FloraGround>>,
     mut cut_face: ResMut<CutFace>,
     trees: Query<
@@ -434,20 +474,22 @@ pub(crate) fn carve_notches(
             Has<GpuGrowth>,
             Has<Growing>,
             Option<&NotchCarved>,
+            Option<&PooledLook>,
+            Option<&TreeColors>,
         ),
         (Without<Felled>, Without<FellTree>),
     >,
     healed: Query<(Entity, &NotchCarved, &ProceduralTree, &TreeRender), (Without<TreeNotch>, Without<Felled>)>,
 ) {
-    for (entity, notch, transform, tree, render, pooled, gpu, growing, carved) in &trees {
+    for (entity, notch, transform, tree, render, pooled, gpu, growing, carved, look, colors) in &trees {
         if let Some(pooled) = pooled {
             let Some(pool) = pools.as_deref().and_then(|pools| pools.get(&pooled.pool)) else { continue };
-            let params = pool.tree_params(pooled.variant);
+            let (params, colors) = pooled_to_tree(pool, pooled, look, &recolors);
             commands
                 .entity(entity)
                 .despawn_related::<Children>()
-                .remove::<(PooledTree, PooledTreeSpawned, PooledShapeFilled)>()
-                .insert((ProceduralTree(params), TreeAge(pool.age)));
+                .remove::<(PooledTree, PooledTreeSpawned, PooledShapeFilled, PooledLook)>()
+                .insert((ProceduralTree(params), TreeAge(pool.age), TreeColors(colors)));
             continue;
         }
         let Some(tree) = tree else { continue };
@@ -482,7 +524,7 @@ pub(crate) fn carve_notches(
                 commands.entity(child).insert(Mesh3d(meshes.add(faces.into_bevy_mesh())));
             }
             (None, false) => {
-                let face = cut_face.get(&mut textures, &mut materials);
+                let face = cut_face.get(&mut textures, &mut materials, colors.is_some_and(|colors| colors.0.unlit));
                 let mesh = Mesh3d(meshes.add(faces.into_bevy_mesh()));
                 drawn = Some(commands.spawn((mesh, MeshMaterial3d(face), ChildOf(entity))).id());
             }
@@ -499,6 +541,26 @@ pub(crate) fn carve_notches(
         }
         commands.entity(entity).remove::<NotchCarved>();
     }
+}
+
+/// What a pooled tree becomes when it is cut or notched: its variant's parameters painted in the
+/// colours of its look as they stand now ([`TreePool::tree_params_for`], then any
+/// [`RecolorPool`](crate::RecolorPool) since), and those colours, which the tree keeps as
+/// [`TreeColors`] (for an unlit look, and for later rebuilds).
+fn pooled_to_tree(
+    pool: &TreePool,
+    pooled: &PooledTree,
+    look: Option<&PooledLook>,
+    recolors: &PoolRecolors,
+) -> (TreeParams, PoolColors) {
+    let look = look.map_or(0, |look| look.0);
+    let colors = recolors.colors(pooled.pool.id(), look, pool);
+    (colors.apply(&pool.tree_params_for(pooled.variant, look)), colors)
+}
+
+/// `params` of a tree that does not sway in the wind: what a felled tree lying on the ground has.
+pub(crate) fn calm_params(params: &TreeParams) -> TreeParams {
+    TreeParams { wind: crate::WindResponse { sway: 0.0, ..params.wind.clone() }, ..params.clone() }
 }
 
 /// How high the saw or the axe goes in, in a tree's own space: `height` metres above its base
@@ -635,11 +697,20 @@ pub(crate) fn buck_trees(
     mut cut_face: ResMut<CutFace>,
     ground: Option<Res<FloraGround>>,
     mut bucked: MessageWriter<TreeBucked>,
-    trees: Query<(Entity, &BuckTree, &Felled, &Transform, &ProceduralTree, Option<&TreeAge>, &TreeRender)>,
+    trees: Query<(
+        Entity,
+        &BuckTree,
+        &Felled,
+        &Transform,
+        &ProceduralTree,
+        Option<&TreeAge>,
+        &TreeRender,
+        Option<&TreeColors>,
+    )>,
     flora_wood: Query<&MeshMaterial3d<FloraMaterial>>,
     plain_wood: Query<&MeshMaterial3d<StandardMaterial>>,
 ) {
-    for (entity, buck, felled, lying, tree, age, render) in &trees {
+    for (entity, buck, felled, lying, tree, age, render, colors) in &trees {
         if !felled.at_rest {
             continue;
         }
@@ -659,7 +730,10 @@ pub(crate) fn buck_trees(
             trunk = trunk.flat_shaded();
         }
         let top = trunk.positions.iter().map(|p| p.y).fold(0.0, f32::max);
-        let face = cut_face.get(&mut textures, &mut materials);
+        let unlit = colors.is_some_and(|colors| colors.0.unlit);
+        let face = cut_face.get(&mut textures, &mut materials, unlit);
+        let painted = colors.map_or_else(|| tree.0.clone(), |colors| colors.0.apply(&tree.0));
+        let cut_wood = CutWood { params: Arc::new(painted), unlit, calm: true };
         let scale = fall.base.scale.y.max(1.0e-4);
         // The ground's height at a point, and how much higher than its radius a log's axis lies
         // there (1 on flat ground, more on a slope).
@@ -695,7 +769,12 @@ pub(crate) fn buck_trees(
 
             let capsule = WoodCapsule { a: c0, b: c1, radius: r0 };
             let log = commands
-                .spawn((place, Visibility::Inherited, TreeLog { stump: felled.stump, index: logs.len() as u32, capsule }))
+                .spawn((
+                    place,
+                    Visibility::Inherited,
+                    TreeLog { stump: felled.stump, index: logs.len() as u32, capsule },
+                    cut_wood.clone(),
+                ))
                 .id();
             let mut wood = commands.spawn((Mesh3d(meshes.add(piece.kept.into_bevy_mesh())), ChildOf(log)));
             if let Ok(material) = flora_wood.get(render.trunk) {
@@ -1290,7 +1369,7 @@ mod tests {
         assert!(app.world().get::<NotchCarved>(tree).is_none());
         // The fallen tree's faces: the notch's face (out of the trunk and down) and the cut behind
         // it (down); the floor stays on the stump.
-        let cut_face = app.world().resource::<CutFace>().0.clone().unwrap();
+        let cut_face = app.world().resource::<CutFace>().lit.clone().unwrap();
         let children: Vec<Entity> = app.world().get::<Children>(tree).unwrap().iter().collect();
         let faces = children
             .into_iter()
@@ -1337,5 +1416,163 @@ mod tests {
         }
         let (flat, smooth) = (radius(&app, &bucked), radius(&round_app, &round_logs));
         assert!((0.7..=1.1).contains(&(flat / smooth)), "the prism log is {flat} thick, the round one {smooth}");
+    }
+
+    const BLUE: PoolColors =
+        PoolColors { wood: bevy::color::Color::srgb(0.10, 0.20, 0.60), leaves: bevy::color::Color::srgb(0.30, 0.55, 0.95), unlit: true };
+    const RUST: PoolColors =
+        PoolColors { wood: bevy::color::Color::srgb(0.45, 0.20, 0.08), leaves: bevy::color::Color::srgb(0.75, 0.35, 0.10), unlit: false };
+
+    fn flora_app() -> bevy::app::App {
+        let mut app = app();
+        app.insert_resource(crate::FloraMaterialSupport);
+        app
+    }
+
+    fn recolor(app: &mut bevy::app::App, tree: Entity, colors: PoolColors) {
+        let message = crate::RecolorTree { tree, colors };
+        app.world_mut().resource_mut::<bevy::ecs::message::Messages<crate::RecolorTree>>().write(message);
+    }
+
+    fn flora_of(app: &bevy::app::App, entity: Entity) -> FloraMaterial {
+        let handle = &app.world().get::<MeshMaterial3d<FloraMaterial>>(entity).expect("a flora material").0;
+        app.world().resource::<Assets<FloraMaterial>>().get(handle).unwrap().clone()
+    }
+
+    fn plain_of(app: &bevy::app::App, entity: Entity) -> StandardMaterial {
+        let handle = &app.world().get::<MeshMaterial3d<StandardMaterial>>(entity).expect("a plain material").0;
+        app.world().resource::<Assets<StandardMaterial>>().get(handle).unwrap().clone()
+    }
+
+    fn children_of(app: &bevy::app::App, entity: Entity) -> Vec<Entity> {
+        app.world().get::<Children>(entity).map_or_else(Vec::new, |children| children.iter().collect())
+    }
+
+    /// Every child of `entity` with a flora material wears `colors`: the wood's colour for wood, the
+    /// leaves' for leaves; returns how many there are.
+    fn assert_dressed(app: &bevy::app::App, entity: Entity, colors: PoolColors, calm: bool) -> usize {
+        let mut seen = 0;
+        for child in children_of(app, entity) {
+            if app.world().get::<MeshMaterial3d<FloraMaterial>>(child).is_none() {
+                continue;
+            }
+            let material = flora_of(app, child);
+            let wanted = if material.extension.leaf { colors.leaves } else { colors.wood };
+            assert_eq!(material.base.base_color, wanted, "leaf: {}", material.extension.leaf);
+            assert_eq!(material.base.unlit, colors.unlit);
+            if calm {
+                assert_eq!(material.extension.flora.response.x, 0.0, "a tree on the ground does not sway");
+            }
+            seen += 1;
+        }
+        seen
+    }
+
+    #[test]
+    fn recolouring_a_standing_tree_swaps_its_materials_without_rebuilding_and_the_colours_outlast_a_rebuild() {
+        let mut app = flora_app();
+        let tree = app
+            .world_mut()
+            .spawn((ProceduralTree(TreePreset::Oak.params()), crate::lod::TreeLod::default(), Transform::default()))
+            .id();
+        app.update();
+        app.update();
+        let meshes = |app: &bevy::app::App| -> Vec<_> {
+            children_of(app, tree).into_iter().map(|c| app.world().get::<Mesh3d>(c).unwrap().0.id()).collect()
+        };
+        let before = meshes(&app);
+        let mut generated =
+            app.world().resource::<bevy::ecs::message::Messages<crate::TreeGenerated>>().get_cursor_current();
+
+        recolor(&mut app, tree, BLUE);
+        app.update();
+        assert!(assert_dressed(&app, tree, BLUE, false) >= 6, "every level of detail is recoloured");
+        assert_eq!(meshes(&app), before, "no mesh was rebuilt");
+        let messages = app.world().resource::<bevy::ecs::message::Messages<crate::TreeGenerated>>();
+        assert_eq!(generated.read(messages).count(), 0);
+
+        // A rebuild is drawn in the colours the tree was given, not the parameters'.
+        app.world_mut().get_mut::<ProceduralTree>(tree).unwrap().0.seed = 9;
+        app.update();
+        app.update();
+        let messages = app.world().resource::<bevy::ecs::message::Messages<crate::TreeGenerated>>();
+        assert_eq!(generated.read(messages).count(), 1, "the tree was rebuilt");
+        assert!(assert_dressed(&app, tree, BLUE, false) >= 6);
+
+        recolor(&mut app, tree, RUST);
+        app.update();
+        assert!(assert_dressed(&app, tree, RUST, false) >= 6, "back to lit");
+    }
+
+    #[test]
+    fn a_tree_drawn_with_plain_materials_is_recoloured_in_place() {
+        let mut app = app();
+        let tree = app.world_mut().spawn((ProceduralTree(TreePreset::Oak.params()), Transform::default())).id();
+        app.update();
+        recolor(&mut app, tree, BLUE);
+        app.update();
+        let render = app.world().get::<TreeRender>(tree).unwrap();
+        let (trunk, foliage) = (render.trunk_entity(), render.foliage_entity().unwrap());
+        for (child, color) in [(trunk, BLUE.wood), (foliage, BLUE.leaves)] {
+            let material = plain_of(&app, child);
+            assert_eq!((material.base_color, material.unlit), (color, true));
+        }
+    }
+
+    #[test]
+    fn a_tree_recoloured_while_it_falls_lands_and_lies_in_the_new_colours_still_with_unlit_cut_faces() {
+        let mut app = flora_app();
+        let tree = app.world_mut().spawn((ProceduralTree(TreePreset::Oak.params()), Transform::default())).id();
+        app.update();
+        app.update();
+        app.world_mut().entity_mut(tree).insert(FellTree { speed: 4.0, ..Default::default() });
+        app.update();
+        assert!(!app.world().get::<Felled>(tree).expect("falling").landed());
+
+        recolor(&mut app, tree, BLUE);
+        app.update();
+        assert!(assert_dressed(&app, tree, BLUE, false) >= 2, "falling, it still sways");
+        assert_eq!(settle(&mut app, 900), 1);
+        assert!(app.world().get::<Felled>(tree).unwrap().landed());
+        assert!(assert_dressed(&app, tree, BLUE, true) >= 2, "lying, it does not");
+
+        // Its stump and every cut face: the unlit twin of the end grain.
+        let stump = app.world().get::<Felled>(tree).unwrap().stump;
+        assert!(assert_dressed(&app, stump, BLUE, false) >= 1);
+        let faces: Vec<Entity> = [tree, stump]
+            .into_iter()
+            .flat_map(|e| children_of(&app, e))
+            .filter(|&c| app.world().get::<MeshMaterial3d<StandardMaterial>>(c).is_some())
+            .collect();
+        assert!(faces.len() >= 2, "the tree and its stump have cut faces");
+        assert!(faces.iter().all(|&face| plain_of(&app, face).unlit));
+
+        // Lying on the ground it is recoloured again: still still, and lit.
+        recolor(&mut app, tree, RUST);
+        app.update();
+        assert!(assert_dressed(&app, tree, RUST, true) >= 2);
+        assert!(assert_dressed(&app, stump, RUST, false) >= 1);
+        assert!(faces.iter().all(|&face| !plain_of(&app, face).unlit));
+
+        // Bucked, the stump and each log are recoloured by their own message.
+        app.world_mut().entity_mut(tree).insert(BuckTree::default());
+        app.update();
+        let mut logs = app.world_mut().query::<(Entity, &TreeLog)>();
+        let logs: Vec<Entity> = logs.iter(app.world()).map(|(log, _)| log).collect();
+        assert!(!logs.is_empty(), "the tree was not bucked");
+        recolor(&mut app, stump, BLUE);
+        for &log in &logs {
+            recolor(&mut app, log, BLUE);
+        }
+        app.update();
+        assert!(assert_dressed(&app, stump, BLUE, false) >= 1);
+        for &log in &logs {
+            assert!(assert_dressed(&app, log, BLUE, true) >= 1, "a log's wood does not sway");
+            let ends: Vec<Entity> = children_of(&app, log)
+                .into_iter()
+                .filter(|&c| app.world().get::<MeshMaterial3d<StandardMaterial>>(c).is_some())
+                .collect();
+            assert!(!ends.is_empty() && ends.iter().all(|&end| plain_of(&app, end).unlit), "the logs' end grain is unlit");
+        }
     }
 }

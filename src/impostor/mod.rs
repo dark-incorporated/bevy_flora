@@ -43,7 +43,7 @@ use bevy::render::RenderApp;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use material::ImpostorBakeMaterial;
-pub use material::ImpostorMaterial;
+pub use material::{ImpostorMaterial, ImpostorTint};
 
 pub(crate) use bake::{ImpostorBakes, ImpostorsBaked, drive_impostor_bakes, start_impostor_bakes};
 
@@ -77,8 +77,9 @@ pub struct ImpostorAtlas {
     pub size: Vec2,
     /// Height of the quad's centre above the tree's base, in metres.
     pub center_y: f32,
-    /// The material that draws the atlas.
-    pub material: Handle<ImpostorMaterial>,
+    /// The materials that draw the atlas, one per look of the pool ([`TreePool::looks`](crate::TreePool::looks);
+    /// the same pictures in each, tinted to the look's colours: see [`ImpostorTint`]).
+    pub materials: Vec<Handle<ImpostorMaterial>>,
     /// The quad, in the tree's local space.
     pub quad: Handle<Mesh>,
 }

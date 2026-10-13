@@ -708,12 +708,13 @@ fn add_see_through(descriptor: &mut RenderPipelineDescriptor, mesh_key: MeshPipe
 
 /// The base of a flora material: the leaf shader lights the surface itself, which only the
 /// forward pass can do.
-pub(crate) fn flora_base(color: Color) -> StandardMaterial {
+pub(crate) fn flora_base(color: Color, unlit: bool) -> StandardMaterial {
     StandardMaterial {
         base_color: color,
         perceptual_roughness: 1.0,
         cull_mode: Some(Face::Back),
         opaque_render_method: OpaqueRendererMethod::Forward,
+        unlit,
         ..Default::default()
     }
 }
@@ -738,6 +739,8 @@ pub(crate) struct Surface {
     pub venation: Option<Handle<Image>>,
     /// How the surface is lit: see [`RenderStyle`].
     pub style: RenderStyle,
+    /// Drawn as its colour, with no lighting: [`PoolColors::unlit`](crate::PoolColors::unlit).
+    pub unlit: bool,
 }
 
 impl Surface {
@@ -749,7 +752,7 @@ impl Surface {
             uniform.bark_mean = Vec4::new(bark.mean.red, bark.mean.green, bark.mean.blue, 0.0);
         }
         let color = bark.as_ref().map_or(params.trunk_color, |bark| bark.base_color(params.trunk_color));
-        Self { color, uniform, leaf: false, style: params.style, bark, leaf_scan: None, venation: None }
+        Self { color, uniform, leaf: false, style: params.style, bark, leaf_scan: None, venation: None, unlit: false }
     }
 
     /// The leaves of a tree with `params`, wearing `leaf_scan`'s atlas, or `venation`'s veins.
@@ -769,7 +772,13 @@ impl Surface {
         if let Some(blossom) = params.foliage.blossom {
             uniform.blossom = colour_ratio(blossom, color);
         }
-        Self { color, uniform, leaf: true, style: params.style, bark: None, leaf_scan, venation }
+        Self { color, uniform, leaf: true, style: params.style, bark: None, leaf_scan, venation, unlit: false }
+    }
+
+    /// The same surface, lit as ever or drawn as its colour alone.
+    pub(crate) fn with_unlit(mut self, unlit: bool) -> Self {
+        self.unlit = unlit;
+        self
     }
 
     /// The colour and normal maps the material binds, if it has them.
@@ -787,7 +796,7 @@ impl Surface {
 pub(crate) fn flora_material(surface: &Surface, wind: &FloraWindBuffer) -> FloraMaterial {
     let (detail_color, detail_normal) = surface.detail();
     FloraMaterial {
-        base: flora_base(surface.color),
+        base: flora_base(surface.color, surface.unlit),
         extension: FloraExtension {
             flora: surface.uniform,
             wind: wind.0.clone(),

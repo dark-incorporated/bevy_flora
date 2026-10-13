@@ -63,7 +63,7 @@ use crate::fire::{FloraFire, burnt_front};
 use crate::ground::FloraGround;
 use crate::mesh::ATTRIBUTE_LEAF_SWAY;
 use crate::plugin::{Paint, ProceduralTree, TreeRender};
-use crate::pool::{PoolMaterials, PooledTree, TreePool};
+use crate::pool::{PoolMaterials, PooledLook, PooledTree, TreePool};
 use crate::rng::SeededRng;
 use crate::shading::{FloraExtension, FloraMaterial, FloraSeason, FloraWind, TreeShake, TreeShakes};
 
@@ -220,8 +220,13 @@ impl FallCaches {
             base: source.base.clone(),
             extension: FloraExtension { falling: true, ..source.extension.clone() },
         };
+        // Made again when the leaves' look changed: their uniform, or their colour or lighting.
         if let Some(made) = self.materials.get(&leaves.id())
-            && flora.get(made).is_some_and(|made| made.extension == look.extension)
+            && flora.get(made).is_some_and(|made| {
+                made.extension == look.extension
+                    && made.base.base_color == look.base.base_color
+                    && made.base.unlit == look.base.unlit
+            })
         {
             return Some(made.clone());
         }
@@ -713,6 +718,7 @@ fn leaf_source(
     render: Option<&TreeRender>,
     tree: Option<&ProceduralTree>,
     pooled: Option<&PooledTree>,
+    look: Option<&PooledLook>,
     pools: Option<&Assets<TreePool>>,
 ) -> Option<LeafSource> {
     let hull = |params: &crate::params::TreeParams, variant: i32| {
@@ -730,7 +736,10 @@ fn leaf_source(
         }
         (_, _, Some(pooled)) => {
             let pool = pools?.get(&pooled.pool)?;
-            let Some(PoolMaterials::Flora { leaves, .. }) = &pool.materials else { return None };
+            let look = look.map_or(0, |look| look.0 as usize);
+            let Some(PoolMaterials::Flora { leaves, .. }) = pool.materials.get(look % pool.materials.len().max(1)) else {
+                return None;
+            };
             let index = pooled.variant as usize % pool.variants.len();
             Some(LeafSource {
                 mesh: pool.variants[index].leaves[0].clone()?,
@@ -789,7 +798,14 @@ pub(crate) fn drop_leaves(
     mut meshes: ResMut<Assets<Mesh>>,
     mut flora: ResMut<Assets<FloraMaterial>>,
     pools: Option<Res<Assets<TreePool>>>,
-    trees: Query<(&GlobalTransform, Option<&TreeRender>, Option<&ProceduralTree>, Option<&PooledTree>, Option<&Felled>)>,
+    trees: Query<(
+        &GlobalTransform,
+        Option<&TreeRender>,
+        Option<&ProceduralTree>,
+        Option<&PooledTree>,
+        Option<&PooledLook>,
+        Option<&Felled>,
+    )>,
     stumps: Query<&GlobalTransform>,
     bursts: Query<&LeafBurst>,
     mut caches: ResMut<FallCaches>,
@@ -802,8 +818,8 @@ pub(crate) fn drop_leaves(
         if budget == 0 {
             continue;
         }
-        let Ok((at, render, tree, pooled, felled)) = trees.get(drop.tree) else { continue };
-        let Some(leaves) = leaf_source(render, tree, pooled, pools.as_deref()) else { continue };
+        let Ok((at, render, tree, pooled, look, felled)) = trees.get(drop.tree) else { continue };
+        let Some(leaves) = leaf_source(render, tree, pooled, look, pools.as_deref()) else { continue };
         let Some(source) = meshes.get(&leaves.mesh) else { continue };
         let shed = leaves.deciduous.then_some(season.leaf_fall);
         let burnt = burnt_front(fire.as_deref(), at.translation());
@@ -863,7 +879,10 @@ pub(crate) fn shed_with_season(
     mut caches: ResMut<FallCaches>,
     mut state: ResMut<SeasonShed>,
     cameras: Query<&GlobalTransform, With<Camera3d>>,
-    trees: Query<(&GlobalTransform, Option<&TreeRender>, Option<&ProceduralTree>, Option<&PooledTree>), Without<Felled>>,
+    trees: Query<
+        (&GlobalTransform, Option<&TreeRender>, Option<&ProceduralTree>, Option<&PooledTree>, Option<&PooledLook>),
+        Without<Felled>,
+    >,
     bursts: Query<&LeafBurst>,
     fire: Option<Res<FloraFire>>,
 ) {
@@ -902,7 +921,7 @@ pub(crate) fn shed_with_season(
     let mut rng = SeededRng::from_parts(now.to_bits() as i32, 1);
     let span = to - from;
     let mut looks: HashMap<AssetId<FloraMaterial>, (Handle<FloraMaterial>, BurstBuilder)> = HashMap::default();
-    for (at, render, tree, pooled) in &trees {
+    for (at, render, tree, pooled, look) in &trees {
         let budget = settings.max_leaves.saturating_sub(live) as usize;
         if budget == 0 {
             break;
@@ -911,7 +930,7 @@ pub(crate) fn shed_with_season(
         if !eyes.iter().any(|eye| eye.distance_squared(position) <= reach) {
             continue;
         }
-        let Some(leaves) = leaf_source(render, tree, pooled, pools.as_deref()).filter(|leaves| leaves.deciduous) else {
+        let Some(leaves) = leaf_source(render, tree, pooled, look, pools.as_deref()).filter(|leaves| leaves.deciduous) else {
             continue;
         };
         let Some(source) = meshes.get(&leaves.mesh) else { continue };

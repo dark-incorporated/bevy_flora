@@ -2,7 +2,7 @@
 
 use bevy::app::App;
 use bevy::asset::{Asset, Handle};
-use bevy::color::LinearRgba;
+use bevy::color::{Color, LinearRgba};
 use bevy::image::Image;
 use bevy::material::AlphaMode;
 use bevy::math::Vec4;
@@ -10,7 +10,7 @@ use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey};
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::{
-    AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError,
+    AsBindGroup, RenderPipelineDescriptor, ShaderType, SpecializedMeshPipelineError,
 };
 use bevy::shader::ShaderRef;
 
@@ -45,7 +45,8 @@ pub struct ImpostorMaterial {
     /// light it lets through in `a`. Linear.
     #[texture(2)]
     pub surface: Handle<Image>,
-    /// `x`: the number of views in the atlas; `y`: the [`RenderStyle`] (0 natural, 1 painterly, 2 toon).
+    /// `x`: the number of views in the atlas; `y`: the [`RenderStyle`] (0 natural, 1 painterly, 2 toon);
+    /// `w`: 1 for an unlit look ([`PoolColors::unlit`](crate::PoolColors::unlit)).
     #[uniform(3)]
     pub params: Vec4,
     /// The look of the leaves and the species' response to the wind.
@@ -54,6 +55,10 @@ pub struct ImpostorMaterial {
     /// The weather, shared by every flora material: [`FloraWindBuffer`](crate::FloraWindBuffer).
     #[storage(102, read_only)]
     pub wind: Handle<ShaderBuffer>,
+    /// What the grey of the pictures is multiplied by, for the wood and the leaves: the look this
+    /// material draws ([`PoolColors`](crate::PoolColors)).
+    #[uniform(4)]
+    pub tint: ImpostorTint,
     /// Whether the see-through fade ([`SeeThroughTrees`](crate::SeeThroughTrees)) cuts this
     /// impostor; the plugin sets it while a camera has one.
     pub see_through: bool,
@@ -62,9 +67,34 @@ pub struct ImpostorMaterial {
     pub fire: bool,
 }
 
+/// What the pictures of an impostor are multiplied by to give a [`PoolColors`](crate::PoolColors)
+/// look its colours. The pictures are baked neutral grey (0.5), so the tint is twice the colour
+/// wanted, in linear rgb (w is 1); the shader takes the wood's where the picture holds wood and the
+/// leaves' where it holds leaves.
+#[derive(ShaderType, Clone, Copy, Debug, PartialEq, Default)]
+pub struct ImpostorTint {
+    /// Twice the wood's linear colour.
+    pub wood: Vec4,
+    /// Twice the leaves' linear colour.
+    pub leaf: Vec4,
+}
+
+impl ImpostorTint {
+    /// The tint of a look: `wood` and `leaves` are the colours it should show.
+    pub fn new(wood: Color, leaves: Color) -> Self {
+        let twice = |color: Color| {
+            let c = color.to_linear();
+            Vec4::new(2.0 * c.red, 2.0 * c.green, 2.0 * c.blue, 1.0)
+        };
+        Self { wood: twice(wood), leaf: twice(leaves) }
+    }
+}
+
 impl ImpostorMaterial {
     /// A material for the atlases `albedo` and `surface` with `views` views, lit in `style`
-    /// ([`RenderStyle::Toon`] bands the light), bending in the wind of `wind`.
+    /// ([`RenderStyle::Toon`] bands the light, `unlit` shows the colour as it is), bending in the
+    /// wind of `wind`, in the look of `tint` ([`ImpostorTint`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         albedo: Handle<Image>,
         surface: Handle<Image>,
@@ -72,12 +102,15 @@ impl ImpostorMaterial {
         style: RenderStyle,
         flora: FloraUniform,
         wind: &FloraWindBuffer,
+        tint: ImpostorTint,
+        unlit: bool,
     ) -> Self {
         Self {
             albedo,
             surface,
-            params: Vec4::new(views as f32, style as u32 as f32, 0.0, 0.0),
+            params: Vec4::new(views as f32, style as u32 as f32, 0.0, f32::from(u8::from(unlit))),
             flora,
+            tint,
             wind: wind.0.clone(),
             see_through: false,
             fire: false,
