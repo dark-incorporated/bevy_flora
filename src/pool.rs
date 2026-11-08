@@ -68,6 +68,7 @@ use bevy::log::warn;
 use bevy::math::{Vec3, Vec3A, Vec3Swizzles};
 use bevy::mesh::{Mesh, Mesh3d, MeshTag};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::reflect::prelude::ReflectDefault;
 use bevy::reflect::{Reflect, TypePath};
 use bevy::camera::{Camera, Camera3d, Projection};
 use bevy::transform::components::{GlobalTransform, Transform};
@@ -160,7 +161,8 @@ impl PoolColors {
 /// modulo their number, so any number (a hash of the position) picks one. A tree without it has
 /// look 0. Changing it re-dresses the tree's children without rebuilding anything; a tree felled
 /// or notched keeps its look.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
+#[reflect(Component, Default)]
 pub struct PooledLook(pub u32);
 
 /// Change the colours of one look of a pool, for every tree drawn in it, at once: the pool's
@@ -269,7 +271,8 @@ pub struct PoolVariant {
 /// trees with a shadow-casting sun cost 7.6 ms a frame on an Apple M4 Pro, leaf shading and
 /// wind included (see the README). On an Apple M5 the shadow maps were about a third of the
 /// pooled forest's time, and narrowing the cascades to 120 m in 2 did not change it.)
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Reflect)]
+#[reflect(Component)]
 #[require(Transform, Visibility)]
 pub struct PooledTree {
     /// The pool to take the tree from.
@@ -457,7 +460,7 @@ fn assemble_pool(
 ///
 /// ```rust,no_run
 /// use bevy::prelude::*;
-/// use bevy_flora::prelude::*;
+/// use bevy_flora::{BackgroundPools, LodSettings, PooledTree, TreePreset};
 ///
 /// fn forest(mut commands: Commands, mut pools: BackgroundPools) {
 ///     let oak = pools.build(&TreePreset::Oak.params(), 8, f32::INFINITY, &LodSettings::default());

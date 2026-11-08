@@ -28,6 +28,7 @@ use bevy::ecs::system::EntityCommands;
 use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::reflect::Reflect;
+use bevy::reflect::prelude::ReflectDefault;
 use bevy::render::render_resource::Face;
 use bevy::camera::visibility::{Visibility, VisibilityRange};
 use bevy::tasks::{ComputeTaskPool, TaskPool};
@@ -126,17 +127,23 @@ pub struct TreeMature {
 }
 
 /// Render state owned by the plugin for one tree entity.
-#[derive(Component)]
+///
+/// Reflected for inspection only: `paint`, `full` and `lod` do not reflect and are
+/// `#[reflect(ignore)]`, so the type has no reflected constructor (`from_reflect = false`).
+#[derive(Component, Reflect)]
+#[reflect(Component, from_reflect = false)]
 pub struct TreeRender {
     pub(crate) trunk: Entity,
     /// `None` until the trunk first has geometry.
     pub(crate) trunk_mesh: Option<Handle<Mesh>>,
+    #[reflect(ignore)]
     pub(crate) paint: Paint,
     pub(crate) foliage: Option<(Entity, Handle<Mesh>)>,
     /// A flowering tree's flowers ([`TreeFlowerMesh`]), drawn with the leaf material.
     pub(crate) flowers: Option<(Entity, Handle<Mesh>)>,
     /// Full-grown skeleton generated from the current parameters; aging it
     /// is all a growing tree needs per frame.
+    #[reflect(ignore)]
     pub(crate) full: Skeleton,
     /// Age after which rebuilding changes nothing.
     pub mature_at: f32,
@@ -144,6 +151,7 @@ pub struct TreeRender {
     /// whose age moved while it was built is rebuilt until they agree).
     pub(crate) age: f32,
     /// Levels 1 and 2 of a tree drawn with [`TreeLod`], and the settings they were built with.
+    #[reflect(ignore)]
     pub(crate) lod: Option<(LodSettings, [CoarseLevel; 2])>,
 }
 
@@ -207,24 +215,33 @@ impl TreeRender {
 }
 
 /// Marker on the wood child entity.
-#[derive(Component)]
+#[derive(Component, Default, Reflect)]
+#[reflect(Component, Default)]
 pub struct TreeTrunkMesh;
 
 /// Marker on the leaves child entity.
-#[derive(Component)]
+#[derive(Component, Default, Reflect)]
+#[reflect(Component, Default)]
 pub struct TreeFoliageMesh;
 
 /// Marker on a flowering tree's flowers child entity ([`TreeMeshes::flowers`](crate::TreeMeshes::flowers)),
 /// drawn with the leaves' material. The plugin hides it while
 /// [`FloraSeason::blossom`] is 0, so flowers out of season cost nothing.
-#[derive(Component)]
+#[derive(Component, Default, Reflect)]
+#[reflect(Component, Default)]
 pub struct TreeFlowerMesh;
 
 /// What a flowers child is spawned with: hidden until [`show_flowers`] has looked at the season,
 /// so it never shows for a frame out of season (and has a `Visibility` without the renderer).
 pub(crate) const FLOWERS_SPAWN: (TreeFlowerMesh, Visibility) = (TreeFlowerMesh, Visibility::Hidden);
 
-/// Registers the tree components and the grow/rebuild systems.
+/// The one root set of the crate: every system [`FloraPlugin`] adds is in it, so a game orders its
+/// own systems `.before(FloraSystems)` or `.after(FloraSystems)` and a tool can list what the
+/// plugin runs.
+#[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FloraSystems;
+
+/// Registers the tree components and the grow/rebuild systems, all in [`FloraSystems`].
 pub struct FloraPlugin;
 
 impl bevy::app::Plugin for FloraPlugin {
@@ -260,6 +277,20 @@ impl bevy::app::Plugin for FloraPlugin {
             .init_resource::<PendingPools>()
             .init_resource::<crate::pool::PoolFlora>()
             .register_type::<LodScale>()
+            .register_type::<TreeRender>()
+            .register_type::<TreeTrunkMesh>()
+            .register_type::<TreeFoliageMesh>()
+            .register_type::<TreeFlowerMesh>()
+            .register_type::<TreeLodMesh>()
+            .register_type::<TreeShape>()
+            .register_type::<crate::shape::WoodCapsule>()
+            .register_type::<crate::recolor::FromPool>()
+            .register_type::<crate::pool::PooledLook>()
+            .register_type::<crate::pool::PooledTree>()
+            .register_type::<crate::falling::LeafBurst>()
+            .register_type::<crate::deadfall::PooledDeadfall>()
+            .register_type::<crate::deadfall::IntoDeadfall>()
+            .register_type::<crate::deadfall::DeadfallKind>()
             .add_systems(
                 bevy::app::Update,
                 (
@@ -294,7 +325,8 @@ impl bevy::app::Plugin for FloraPlugin {
                     recolor_trees,
                     show_flowers,
                 )
-                    .chain(),
+                    .chain()
+                    .in_set(crate::FloraSystems),
             )
             // After the procedural trees' systems: both make textures and images and write
             // `TreeShape`s (of other trees), so an order keeps the schedule free of ambiguities.
@@ -321,7 +353,8 @@ impl bevy::app::Plugin for FloraPlugin {
                     sync_pooled_looks,
                 )
                     .chain()
-                    .after(show_flowers),
+                    .after(show_flowers)
+                    .in_set(crate::FloraSystems),
             )
             // After transform propagation: the shaders cut only in the view drawn from where the
             // fading camera is this frame, and push foliage from where the pushers are this frame.
@@ -347,7 +380,8 @@ impl bevy::app::Plugin for FloraPlugin {
                     // And whether any tree has one, so the vertex stages read no tag while none does.
                     crate::glide::sync_condition_flag,
                 )
-                    .after(bevy::transform::TransformSystems::Propagate),
+                    .after(bevy::transform::TransformSystems::Propagate)
+                    .in_set(crate::FloraSystems),
             )
             // Levels of detail follow `LodScale` and an orthographic camera's zoom: after transform
             // propagation (the camera is where it is this frame), before the ranges are checked.
@@ -356,7 +390,8 @@ impl bevy::app::Plugin for FloraPlugin {
                 (follow_orthographic_zoom, scale_lod_bands)
                     .chain()
                     .after(bevy::transform::TransformSystems::Propagate)
-                    .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility),
+                    .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility)
+                    .in_set(crate::FloraSystems),
             )
             // The fire steps after transform propagation (its fuel is where the trees stand this
             // frame) and is written into the shared buffer when it changed; the materials are
@@ -373,7 +408,8 @@ impl bevy::app::Plugin for FloraPlugin {
                 )
                     .chain()
                     .after(bevy::transform::TransformSystems::Propagate)
-                    .before(bevy::asset::AssetEventSystems),
+                    .before(bevy::asset::AssetEventSystems)
+                    .in_set(crate::FloraSystems),
             )
             // Falling leaves start from where the trees are this frame, and from their leaf meshes
             // as they are this frame (a growing tree's change every frame). Nothing runs while
@@ -394,7 +430,8 @@ impl bevy::app::Plugin for FloraPlugin {
                     .after(bevy::transform::TransformSystems::Propagate)
                     .after(bevy::asset::AssetEventSystems)
                     // They read the level a tree shows (`ConditionShown`), as this frame's glide left it.
-                    .after(crate::condition::advance_condition_glides),
+                    .after(crate::condition::advance_condition_glides)
+                    .in_set(crate::FloraSystems),
             );
         // Before `gpu`: its shaders import the flora library.
         crate::shading::build(app);
@@ -929,7 +966,8 @@ pub(crate) struct CoarseMeshes {
 
 /// Marker on a child of a tree drawn with [`TreeLod`] that carries one of its coarse levels
 /// (1 or 2), its wood or its leaves.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub struct TreeLodMesh(pub u8);
 
 /// The distances level `level` of a tree drawn with [`TreeLod`] is drawn at: a pool's bands,

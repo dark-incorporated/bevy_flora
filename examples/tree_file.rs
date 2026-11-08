@@ -21,7 +21,7 @@ use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
-use bevy_flora::prelude::*;
+use bevy_flora::{FloraPlugin, ProceduralTree, ProceduralTreeAsset, TreeParams, TreePreset};
 use bevy_flora::build_tree;
 
 /// Where the example's tree files live, relative to the crate.

@@ -38,7 +38,11 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::time::TimeUpdateStrategy;
 use bevy::ui::UiTargetCamera;
-use bevy_flora::prelude::*;
+use bevy_flora::{
+    BuckTree, Burnt, FallenFruit, FellTree, Felled, FloraFire, FloraIndex, FloraPlugin, FloraSeason,
+    FloraWetness, FloraWind, ProceduralTree, TreeBurnt, TreeFruit, TreeLog, TreeNotch, TreeParams,
+    TreePreset, TreeShake, TreeShakes, TreeStump,
+};
 use bevy_flora::{FireCell, SeededRng};
 
 /// Eye height, walking pace (m/s), how far the axe and the hand reach (m), and how far a fallen

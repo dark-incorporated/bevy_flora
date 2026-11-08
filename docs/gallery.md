@@ -148,7 +148,7 @@ that explains it, and `docs/media/README.md` gives every file its command, captu
 
 ## [Gameplay queries and saves](guide/gameplay.md)
 
-### Gameplay: colliders, growth events, the prelude
+### Gameplay: colliders and growth events
 
 ![An oak with its gameplay shape drawn over it: three tapering capsules up the trunk, capsules along the thick limbs, and a box around the crown](media/shape.jpg)
 

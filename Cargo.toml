@@ -51,7 +51,8 @@ ron = ["serde", "dep:ron"]
 file_watcher = ["bevy/file_watcher"]
 
 [dev-dependencies]
-bevy = { version = "0.20" }
+# `debug`: `System::name()` is the full type path only with it, which `tests/machine_plate.rs` matches on.
+bevy = { version = "0.20", features = ["debug"] }
 
 [[example]]
 name = "tree_file"

@@ -2,13 +2,13 @@
 
 A tree's shape as colliders, finding the tree you mean among a hundred thousand, and putting the forest back as the player left it.
 
-## Gameplay: colliders, growth events, the prelude
+## Gameplay: colliders and growth events
 
 A game wants a tree's shape in a handful of primitives, not twenty thousand triangles. Insert `TreeShape::default()` next to a `ProceduralTree` (or a `PooledTree`) and the plugin keeps it up to date: three capsules up the trunk that taper with it (the lowest has the trunk's radius at hip height, so a walking character meets what it sees), one capsule for every stretch of wood at least `limb_radius` thick (6 cm by default; `TreeShape::with_limb_radius`), and a box around the leaves, all in the tree's local space. A growing tree's shape grows with it on both the CPU and the `GpuGrowth` path, and it is written only when it changes, so `Changed<TreeShape>` is the cue to rebuild colliders. `WoodCapsule::to_primitive` gives Bevy's `Capsule3d` and where it sits, which is what most physics engines' capsule colliders take. Building the shape costs about as much as ageing the skeleton (6 to 9 microseconds a tree on an Apple M4 Pro), which is why it is opt-in. `TreeMature` is sent once when a `Growing` tree reaches maturity, and `use bevy_flora::prelude::*;` brings in the plugin, the components, the presets and parameters, the wind and the shapes.
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{Growing, ProceduralTree, TreeAge, TreeMature, TreePreset, TreeShape};
 
 fn plant(mut commands: Commands) {
     commands.spawn((
@@ -63,7 +63,7 @@ A glide costs what the tags it rewrites cost: a tree's meshes are tagged again e
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{ConditionGlide, FloraIndex, TreeCondition};
 
 // A blight that takes a minute to show: every tree near `centre` is dying by the time it is over.
 fn blight(mut commands: Commands, index: Res<FloraIndex>) {
@@ -77,7 +77,7 @@ fn blight(mut commands: Commands, index: Res<FloraIndex>) {
 ```rust,no_run
 use bevy::prelude::*;
 use bevy::shape::Ray3d;
-use bevy_flora::prelude::*;
+use bevy_flora::{FloraIndex, TreeCondition, TreeNotch};
 
 // An axe's blow on the trunk the player looks at, within reach: the notch faces the player.
 fn swing(mut commands: Commands, camera: Single<&GlobalTransform, With<Camera3d>>, index: Res<FloraIndex>) {
@@ -130,7 +130,7 @@ A tree is its parameters and its seed, so a save holds what the game did to it:
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{FellTree, ProceduralTree, TreeFruit, TreeParams};
 
 /// One tree as a game might save it.
 struct SavedTree {

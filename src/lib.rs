@@ -64,7 +64,7 @@
 //!
 //! ```rust,no_run
 //! use bevy::prelude::*;
-//! use bevy_flora::prelude::*;
+//! use bevy_flora::{BuildInBackground, ProceduralTree, TreePreset};
 //!
 //! fn plant(mut commands: Commands) {
 //!     for i in 0..200 {
@@ -89,7 +89,7 @@
 //!
 //! ```rust,no_run
 //! use bevy::prelude::*;
-//! use bevy_flora::prelude::*;
+//! use bevy_flora::{ProceduralTree, TreeLod, TreePreset};
 //!
 //! fn plant(mut commands: Commands) {
 //!     commands.spawn((ProceduralTree(TreePreset::Oak.params()), TreeLod::default(), Transform::default()));
@@ -331,8 +331,8 @@
 //! A [`TreeShape`] on a tree (opt-in: insert `TreeShape::default()`) is kept up to date by the
 //! plugin: capsules up the trunk and along every limb thicker than its `limb_radius`, and a box
 //! around the crown, in the tree's local space, for colliders, picking or line of sight.
-//! [`TreeMature`] is sent once when a [`Growing`] tree reaches maturity. The [`prelude`] has the
-//! types a game usually needs.
+//! [`TreeMature`] is sent once when a [`Growing`] tree reaches maturity. Everything a game
+//! uses is re-exported flat at the crate root.
 //!
 //! # Finding trees
 //!
@@ -483,7 +483,7 @@ pub use params::{
     WindResponse,
 };
 pub use pipeline::{TreeMeshes, build_tree};
-pub use plugin::{FloraPlugin, Growing, ProceduralTree, TreeAge, TreeGenerated, TreeMature, TreeRender};
+pub use plugin::{FloraPlugin, FloraSystems, Growing, ProceduralTree, TreeAge, TreeGenerated, TreeMature, TreeRender};
 pub use pool::{
     BackgroundPools, LodScale, PoolColors, PoolMaterials, PoolVariant, PooledLook, PooledTree, RecolorPool, TreePool,
     build_pool, build_pool_with_deadfall,
@@ -506,25 +506,6 @@ pub use tree_asset::ProceduralTreeAsset;
 pub use tree_asset::{TreeFileError, TreeParamsLoader};
 pub use units::FloraUnits;
 pub use skeleton::{Node, NodeKind, Skeleton, generate_skeleton};
-
-/// What a game usually needs, in one `use bevy_flora::prelude::*;`: the plugin, the tree, pool and
-/// growth components, trees from assets, the presets and parameters, the wind, the season, the
-/// shakes, felling, the ground, the gameplay shape and the forest scatter.
-pub mod prelude {
-    pub use crate::{
-        BackgroundPools, BarkParams, BarkScan, BuckTree, BuildInBackground, DropLeaves, FallingLeaves, FellTree, Felled,
-        FloraFire,
-        FloraGround, FloraIndex, FloraPlugin, FloraSeason, FloraShadows, FloraUnits, FloraWetness, FloraWind, FoliageParams, FoliagePusher,
-        Burnt, FallenFruit, FallingFruit, FruitFell, FruitParams, TreeBurnt, TreeFruit,
-        GpuGrowth, Growing, GustFront,
-        LeafBurst, LeafScan, LodDistances, LodScale, LodSettings, PoolColors, PooledLook, PooledTree, ProceduralTree,
-        ProceduralTreeAsset, RecolorPool, RecolorTree, RenderStyle, CrownStyle, TrunkStyle,
-        Scatter, ScatterPoint, SeeThroughTrees, TreeAge, TreeBucked, TreeCondition, TreeGenerated, TreeLanded, TreeLod, TreeLog,
-        ConditionGlide,
-        TreeMature, TreeNotch, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes, TreeShape, TreeStump,
-        WindResponse, WoodCapsule, build_pool,
-    };
-}
 
 // Compile the README's Rust examples as doctests.
 #[cfg(doctest)]

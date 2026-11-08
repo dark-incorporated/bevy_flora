@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use bevy::reflect::Reflect;
 use bevy::asset::{AssetId, Assets, Handle};
 use bevy::camera::visibility::Visibility;
 use bevy::ecs::prelude::*;
@@ -167,7 +168,7 @@ pub(crate) fn build_deadfall(
 }
 
 /// What a [`PooledDeadfall`] is.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Reflect)]
 pub enum DeadfallKind {
     /// A stump: the wood below the cut and its face ([`TreeStump`] with no tree).
     Stump,
@@ -191,7 +192,8 @@ pub enum DeadfallKind {
 /// obstacles ([`FloraIndex::obstacles_within`](crate::FloraIndex::obstacles_within)). The plugin
 /// gives it its children once its pool is ready; `variant` is taken modulo the pool's variants.
 /// Inserting [`BuckTree`] on a lying one makes it bucked, in place.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Reflect)]
+#[reflect(Component)]
 #[require(Transform, Visibility)]
 pub struct PooledDeadfall {
     /// The pool to take it from, which must have been built with deadfall.
@@ -356,7 +358,8 @@ fn pivot_about(hinge: Vec3, axis: Vec3, angle: f32) -> Transform {
 ///     }
 /// }
 /// ```
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Reflect)]
+#[reflect(Component)]
 pub struct IntoDeadfall(pub DeadfallKind);
 
 /// Make every [`IntoDeadfall`] tree whose pool is ready a [`PooledDeadfall`] in place: its tree

@@ -29,7 +29,7 @@ use crate::plugin::ProceduralTree;
 ///
 /// ```rust,no_run
 /// use bevy::prelude::*;
-/// use bevy_flora::prelude::*;
+/// use bevy_flora::{ProceduralTreeAsset, TreeParams, TreePreset};
 ///
 /// // Every tree spawned from the same handle follows edits to it.
 /// fn spawn(mut commands: Commands, mut assets: ResMut<Assets<TreeParams>>) {

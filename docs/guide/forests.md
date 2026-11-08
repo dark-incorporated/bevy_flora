@@ -53,7 +53,7 @@ Shadows are a large part of a forest's cost: every shadow cascade draws every tr
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{BackgroundPools, LodSettings, PooledTree, TreePreset};
 
 fn forest(mut commands: Commands, mut pools: BackgroundPools) {
     let lod = LodSettings::default();
@@ -75,7 +75,9 @@ A pool can be drawn in more than one colouring without a second set of meshes. `
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{
+    LodSettings, PoolColors, PooledLook, PooledTree, RecolorPool, TreePool, TreePreset, build_pool,
+};
 
 fn looks(
     mut commands: Commands,
@@ -107,7 +109,7 @@ A grid of trees reads as an orchard. `Scatter` spreads them the way a forest sta
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{LodSettings, PooledTree, Scatter, TreePool, TreePreset, build_pool};
 
 fn plant_forest(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut pools: ResMut<Assets<TreePool>>) {
     let lod = LodSettings::default();
@@ -140,7 +142,7 @@ fn plant_forest(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut po
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{Scatter, ScatterPoint};
 
 // The last species alone within 35 m of `centre`, fading out over the next 20 m, and nowhere else.
 fn with_a_stand(forest: &Scatter, centre: Vec2) -> Vec<ScatterPoint> {
@@ -163,7 +165,7 @@ Undergrowth is a second, closer scatter that keeps clear of the trunks, drawn fr
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{PooledTree, Scatter, ScatterPoint, TreePool};
 
 // Shrubs at least 2.5 m apart and 1.5 m from every trunk. For a big forest, look the trunks up in a
 // grid instead of all of them (the `forest` example does).
@@ -187,7 +189,9 @@ A tree stood at the ground's height under its centre floats on a slope: the down
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{
+    Felled, FloraGround, LodSettings, PooledTree, Scatter, TreePool, TreePreset, build_pool,
+};
 
 fn height(at: Vec2) -> f32 {
     6.0 * (at.x * 0.03).sin() * (at.y * 0.02).cos() // your terrain, or a heightmap lookup
@@ -223,7 +227,7 @@ The crate builds trees in metres, and a game scales them to its world with a `Tr
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::FloraUnits;
 
 fn setup(mut commands: Commands) {
     // A world in feet: trees are placed with `Transform::from_scale(Vec3::splat(3.2808))`.

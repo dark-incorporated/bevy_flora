@@ -38,7 +38,10 @@ use bevy::render::render_resource::TextureFormat;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::time::TimeUpdateStrategy;
 use bevy::ui::UiTargetCamera;
-use bevy_flora::prelude::*;
+use bevy_flora::{
+    BackgroundPools, FloraPlugin, FloraWind, LodSettings, PooledTree, Scatter,
+    SeeThroughTrees, TreePool, TreePreset,
+};
 
 /// The camera's bearing from the walker, how far it looks down (degrees) and how far back it
 /// stands (metres). An orthographic camera's picture does not change with the distance, so it

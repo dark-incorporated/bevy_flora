@@ -29,7 +29,7 @@
 //!
 //! ```rust,no_run
 //! use bevy::prelude::*;
-//! use bevy_flora::prelude::*;
+//! use bevy_flora::{DropLeaves, ProceduralTree};
 //!
 //! // A bird lands in the oak.
 //! fn bird_lands(mut drops: MessageWriter<DropLeaves>, oak: Single<Entity, With<ProceduralTree>>) {
@@ -108,7 +108,8 @@ pub struct DropLeaves {
 /// A drop of falling leaves: one entity with one mesh, drawn with a copy of its trees' leaf
 /// material that moves them ([`FloraExtension::falling`]), and despawned when the last of them is
 /// gone.
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Reflect)]
+#[reflect(Component)]
 pub struct LeafBurst {
     /// The tree they fell from, or `None` for the leaves the season sheds, which may come from
     /// several trees with one look.

@@ -19,7 +19,9 @@
 //! }
 //! ```
 
+use bevy::reflect::Reflect;
 use bevy::ecs::component::Component;
+use bevy::ecs::reflect::ReflectComponent;
 use bevy::math::{Isometry3d, Quat, Vec3};
 use bevy::shape::Capsule3d;
 
@@ -32,7 +34,7 @@ const TRUNK_PIECES: u32 = 3;
 
 /// A capsule around a stretch of wood: the segment from `a` to `b` swept by a sphere of
 /// `radius`, in the tree's local space (metres, the base of the trunk at the origin).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Reflect)]
 pub struct WoodCapsule {
     /// One end of the axis (the end nearer the trunk's base).
     pub a: Vec3,
@@ -104,7 +106,8 @@ impl WoodCapsule {
 /// The capsules follow the skeleton's axes: the trunk's wobble and root flare and the leaves'
 /// own geometry are not in them. `crown` is a box around every leaf-bearing branch padded by the
 /// leaf size, so it holds the leaves; it is `None` while the tree has no leaves.
-#[derive(Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq, Reflect)]
+#[reflect(Component)]
 pub struct TreeShape {
     /// Wood thinner than this (metres of radius, at the stretch's base) gets no capsule. Set it
     /// when inserting the component; the plugin keeps it.

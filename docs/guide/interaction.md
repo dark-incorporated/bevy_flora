@@ -8,7 +8,7 @@ A game hits trees. `TreeShakes` is a resource like `FloraWind`: `shake(TreeShake
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{TreeShake, TreeShakes};
 
 // An axe on the tree standing at `trunk`, swung along `swing`: a metre of radius singles it out.
 fn axe_hit(shakes: &mut TreeShakes, time: &Time, trunk: Vec3, swing: Vec3) {
@@ -45,7 +45,7 @@ Hit a tree and leaves come off it. Every new shake knocks `FallingLeaves::per_sh
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{DropLeaves, FallingLeaves, ProceduralTree};
 
 // A bird lands in the oak.
 fn bird_lands(mut drops: MessageWriter<DropLeaves>, oak: Single<Entity, With<ProceduralTree>>) {
@@ -79,7 +79,7 @@ A fruiting tree (`FoliageParams::fruit`, the `Apple` preset) drawn as a `Procedu
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{FallenFruit, FloraSeason, TreeFruit};
 
 // The player picks the apple nearest their hand, and gathers the fallen ones within reach.
 fn pick(
@@ -113,7 +113,7 @@ Insert `FellTree { direction, cut_height, speed }` on a tree and it comes down. 
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{FellTree, TreeLanded};
 
 // The player's axe finished the job: the tree falls away from them.
 fn fell(commands: &mut Commands, tree: Entity, player: Vec3, trunk: Vec3) {
@@ -141,7 +141,7 @@ Before the saw, the axe. Insert `TreeNotch { direction, height, depth }` on a st
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{FellTree, TreeNotch};
 
 // One blow of the player's axe on the side facing them: the notch deepens; once it is a third of
 // the way through, the tree falls toward the notch.
@@ -166,7 +166,7 @@ Insert `BuckTree { log_length, min_radius }` on a felled tree, with its `FellTre
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{BuckTree, FellTree, TreeLog};
 
 // Fell the tree away from the player, and buck it into 2 m logs once it lies still.
 fn chop_down(commands: &mut Commands, tree: Entity, away: Vec2) {
@@ -192,7 +192,7 @@ Trees burn. Insert a `FloraFire` over the game's world, a square grid of cells t
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::FloraFire;
 
 #[derive(Component)]
 struct Player;
@@ -246,7 +246,7 @@ Shrubs and low branches that a character walks through as if they were not there
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::FoliagePusher;
 
 #[derive(Component)]
 struct Player;

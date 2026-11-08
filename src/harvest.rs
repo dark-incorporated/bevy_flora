@@ -21,7 +21,7 @@
 //!
 //! ```rust,no_run
 //! use bevy::prelude::*;
-//! use bevy_flora::prelude::*;
+//! use bevy_flora::{FloraSeason, TreeFruit};
 //!
 //! // The player picks the fruit nearest their hand, within reach.
 //! fn pick(
@@ -105,6 +105,7 @@ impl Fruit {
 /// The fruit of a fruiting [`ProceduralTree`], kept by the plugin: see the
 /// [module documentation](self).
 #[derive(Component, Clone, Debug, Default, Reflect)]
+#[reflect(Component)]
 pub struct TreeFruit {
     fruit: Vec<Fruit>,
     #[reflect(ignore)]
@@ -185,6 +186,7 @@ impl Default for FallingFruit {
 /// is despawned [`FallingFruit::rest`] seconds after it comes to rest. Its [`Transform`] is where
 /// it is, its scale its radius.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Reflect)]
+#[reflect(Component)]
 pub struct FallenFruit {
     /// The tree it fell from.
     pub tree: Entity,
@@ -467,7 +469,8 @@ pub(crate) fn build(app: &mut bevy::app::App) {
             drop_fallen_fruit
                 .run_if(any_with_component::<FallenFruit>)
                 .after(crate::felling::buck_trees)
-                .before(crate::pool::spawn_pooled_trees),
+                .before(crate::pool::spawn_pooled_trees)
+                .in_set(crate::FloraSystems),
         )
         // After transform propagation: fruit falls from where the trees stand this frame. Before
         // the meshes go to the renderer, the picks are marked in them.
@@ -480,7 +483,8 @@ pub(crate) fn build(app: &mut bevy::app::App) {
                 mark_picks,
             )
                 .chain()
-                .after(bevy::transform::TransformSystems::Propagate),
+                .after(bevy::transform::TransformSystems::Propagate)
+                .in_set(crate::FloraSystems),
         );
 }
 

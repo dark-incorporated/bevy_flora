@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use bevy::reflect::Reflect;
 use bevy::ecs::prelude::*;
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::asset::{AssetId, Assets};
@@ -61,7 +62,8 @@ pub(crate) struct CutWood {
 /// [`RecolorPool`] of that pool and look recolours them as a [`RecolorTree`] would, so felled wood
 /// keeps following its pool's palette with the standing trees. Remove it to keep an entity in the
 /// colours it has whatever its pool does.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub struct FromPool {
     /// The pool it was a tree of.
     pub pool: AssetId<TreePool>,

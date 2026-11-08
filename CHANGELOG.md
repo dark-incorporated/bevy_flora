@@ -71,6 +71,8 @@ A change of `TreeCondition` can be drawn as a decline over seconds (`docs/resear
 
 ### Changed
 
+- **Breaking: `bevy_flora` meets the family's machine plate.** `FloraSystems` is the crate's one root set and holds every system `FloraPlugin` adds (the plugin's orderings are unchanged). `bevy_flora::prelude` is gone: everything it exported was already at the crate root, so `use bevy_flora::prelude::*;` becomes `use bevy_flora::{..};` with the names a file uses; the docs, guides, README and examples are migrated. `TreeShape`, `WoodCapsule`, `FromPool`, `PooledLook`, `PooledTree`, `LeafBurst`, `PooledDeadfall`, `IntoDeadfall`, `DeadfallKind`, `TreeRender`, `TreeTrunkMesh`, `TreeFoliageMesh`, `TreeFlowerMesh` and `TreeLodMesh` derive `Reflect` with `#[reflect(Component)]` (`TreeFruit` and `FallenFruit` gain `reflect(Component)`), and `FloraPlugin` registers them. `TreeRender` ignores its handles, skeleton and level data and has no reflected constructor. The crate has no settings resources: `LodSettings` and `DeadfallSettings` are values a pool is built from, not resources. `tests/machine_plate.rs` checks all of it.
+
 - The draw of a condition is a level (0 healthy, 0.5 sick, 1 dying) in the `MeshTag`, not a class: bit 10 says
   a glide runs and bits 11 to 18 hold the level in 254 steps above the class bits, which stay what the game
   set. The shaders read it through `condition_level`, `level_defoliation` and `level_withering` (`common.wesl`)

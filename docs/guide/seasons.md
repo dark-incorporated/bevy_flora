@@ -8,7 +8,7 @@ A year passing over every tree, and rain soaking into them.
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{FloraSeason, TreeParams, TreePreset};
 
 // A year every two minutes: green until 0.55 of the way through, turning to 0.75, falling from
 // 0.7 to 0.9, snowing from 0.88 to 0.92, melting from 0.98, the cherries in blossom from the
@@ -56,7 +56,7 @@ A scattered winter forest under `FloraSeason::SNOW`: the spruces and pines keep 
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::FloraWetness;
 
 /// The game's weather.
 #[derive(Resource)]

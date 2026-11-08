@@ -8,7 +8,7 @@ A third-person or top-down camera in a forest loses the player behind trunks and
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::SeeThroughTrees;
 
 #[derive(Component)]
 struct Player;
@@ -42,7 +42,7 @@ An isometric camera is usually orthographic: a tree is as large on screen wherev
 ```rust,no_run
 use bevy::camera::ScalingMode;
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::SeeThroughTrees;
 
 #[derive(Component)]
 struct Player;

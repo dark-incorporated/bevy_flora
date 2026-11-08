@@ -118,7 +118,7 @@ impl Default for LodSettings {
 ///
 /// ```rust,no_run
 /// use bevy::prelude::*;
-/// use bevy_flora::prelude::*;
+/// use bevy_flora::{LodDistances, LodSettings, ProceduralTree, TreeLod, TreePreset};
 ///
 /// fn plant(mut commands: Commands) {
 ///     let lod = LodSettings { distances: LodDistances { lod1: 20.0, lod2: 50.0, ..default() }, ..default() };

@@ -8,7 +8,7 @@ How a tree changes with age, from the CPU rebuild to the vertex shader, and how 
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{FloraPlugin, ProceduralTreeAsset, TreeParams, TreePreset};
 
 fn main() {
     App::new()
@@ -75,7 +75,7 @@ A tree is built in the frame it is spawned (or its `ProceduralTree` changes), on
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{BuildInBackground, ProceduralTree, TreePreset};
 
 // A streamed chunk of the world comes in: plant its trees without stalling the frame.
 fn plant_chunk(commands: &mut Commands, spots: &[Vec3]) {
@@ -104,7 +104,7 @@ A `ProceduralTree` is drawn in full at every distance: an oak 150 m away costs a
 
 ```rust,no_run
 use bevy::prelude::*;
-use bevy_flora::prelude::*;
+use bevy_flora::{ProceduralTree, TreeLod, TreePreset};
 
 fn plant(mut commands: Commands) {
     for i in 0..1000u32 {
