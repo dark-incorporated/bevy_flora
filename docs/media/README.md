@@ -3,7 +3,7 @@
 Every image, clip and video in this repository, with the command that regenerates it, the date it was
 captured and the crate version it shows. Nothing here is in Git LFS. The README, the guide pages and
 [the gallery](../gallery.md) reference these by a relative path, so crates.io serves them from
-`https://github.com/bevy-coven/bevy_flora/raw/HEAD/docs/media/<file>` too.
+`https://github.com/dark-incorporated/bevy_flora/raw/HEAD/docs/media/<file>` too.
 
 Frames come from the crate's own capture paths: `capture_growth` (one tree, a grove, a year, a shake, a
 fell, a fire, a push, a chop or a harvest), `playground --demo`, `isometric --demo`, or `inspect` for a
@@ -80,9 +80,9 @@ release's pull request, by the same rule as a clip (`AGENTS.md`, step 2). None i
 
 ## Videos
 
-None. A clip longer than 8 seconds belongs on [the book page](https://bevy-coven.github.io/crates/bevy_flora.html),
+None. A clip longer than 8 seconds belongs on [the book page](https://dark-incorporated.github.io/crates/bevy_flora.html),
 as an MP4 with a poster.
 
 ## Copies at the old paths
 
-Until 2026-10-31 these files lived directly under `docs/` (and some under other `docs/` folders). Every release published before then has a README on crates.io and docs.rs whose image URLs name those old paths, and a published README never changes. So each moved file also stays at its old path, as an identical copy: git stores the same content once, so a copy costs nothing in the repository's size. **Do not delete them as duplicates**; when one of the files here is re-recorded, the old-path copy is updated with it (`docs/media/` is the one new references use). The org's rule is in [DOCUMENTATION.md](https://github.com/bevy-coven/.github/blob/main/DOCUMENTATION.md#image-and-link-urls-in-a-readme).
+Until 2026-10-31 these files lived directly under `docs/` (and some under other `docs/` folders). Every release published before then has a README on crates.io and docs.rs whose image URLs name those old paths, and a published README never changes. So each moved file also stays at its old path, as an identical copy: git stores the same content once, so a copy costs nothing in the repository's size. **Do not delete them as duplicates**; when one of the files here is re-recorded, the old-path copy is updated with it (`docs/media/` is the one new references use). The org's rule is in [DOCUMENTATION.md](https://github.com/dark-incorporated/.github/blob/main/DOCUMENTATION.md#image-and-link-urls-in-a-readme).

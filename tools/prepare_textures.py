@@ -47,7 +47,7 @@ def _ssl_context():
 
 SSL_CONTEXT = _ssl_context()
 CACHE = Path("/tmp/bevy_flora_texture_cache")
-USER_AGENT = "bevy_flora-asset-prep (https://github.com/bevy-coven/bevy_flora)"
+USER_AGENT = "bevy_flora-asset-prep (https://github.com/dark-incorporated/bevy_flora)"
 BARK_BUDGET = 3_500_000
 POLYHAVEN = "polyhaven"
 AMBIENTCG = "ambientcg"

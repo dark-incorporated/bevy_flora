@@ -27,7 +27,7 @@ each case killed at 25 s without output or 3 GB resident; it was stopped after a
 
 ## Who sends hostile values
 
-- The editor. bevy_grimoire's family issue F6 (`bevy-coven/bevy_grimoire#102`) is "tune a `.tree.ron` and watch it
+- The editor. bevy_grimoire's family issue F6 (`dark-incorporated/bevy_dark_factory#102`) is "tune a `.tree.ron` and watch it
   regrow": every keystroke in a number field is a candidate value (`1`, `1e`, `1e6`, `-`), and a regrow runs on each.
 - A modded or hand-written `.tree.ron`: RON reads `NaN` and `inf`.
 - A game that derives a field from another number (a height from a noise value, a density from a division) and gets

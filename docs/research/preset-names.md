@@ -2,7 +2,7 @@
 
 Iteration 11, 2026-10-31. No issue is open on this repository (`gh issue list`, 0 open). The item comes from
 the section 4 fallback, "what the crate's consumers hand-roll": the same two lines are written by
-bevy_grimoire (family issue F6, `bevy-coven/bevy_grimoire#102`), by Sanctuary and by this crate's own examples.
+bevy_grimoire (family issue F6, `dark-incorporated/bevy_dark_factory#102`), by Sanctuary and by this crate's own examples.
 
 ## What the consumers write today
 

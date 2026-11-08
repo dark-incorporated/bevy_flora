@@ -48,4 +48,4 @@ Every release, patch releases included, does all of these in the release PR.
 
 ## Docs and media
 
-README and docs follow https://github.com/bevy-coven/.github/blob/main/DOCUMENTATION.md; a feature is not done until its README line and, if visible, its GIF exist. A feature's detail goes in `docs/guide/<page>.md` (index: `docs/guide/README.md`), a picture in `docs/gallery.md` and in the guide page beside the text that explains it, and every media file is listed in `docs/media/README.md` with its command, date and version.
+README and docs follow https://github.com/dark-incorporated/.github/blob/main/DOCUMENTATION.md; a feature is not done until its README line and, if visible, its GIF exist. A feature's detail goes in `docs/guide/<page>.md` (index: `docs/guide/README.md`), a picture in `docs/gallery.md` and in the guide page beside the text that explains it, and every media file is listed in `docs/media/README.md` with its command, date and version.

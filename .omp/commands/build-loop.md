@@ -3,7 +3,7 @@ description: One iteration of the bevy_flora improvement loop
 argument-hint: "[optional focus, e.g. 'issue #87 only']"
 ---
 
-One run of this command is one iteration of a long-running loop on bevy_flora, a Bevy 0.20 crate of parametric, stylized procedural trees and shrubs that grow over time: 20 presets, bent and forking branches, CC0 bark and leaf scans, seasons (turning, leaf fall, snow, blossom, fruit), wind and shakes, felling, bucking, fire and harvest, and forest scale through pools, levels of detail, impostors and `Scatter`, deterministic per seed. Games use it as their forest: Sanctuary's forest is bevy_flora (it pins a git revision), and bevy_grimoire's family issue F6 (`bevy-coven/bevy_grimoire#102`) puts it in the editor: place a tree by preset, age and seed, scatter a forest with a brush, tune a `.tree.ron` and watch it regrow, scrub the seasons. Do ONE improvement per iteration, the single most valuable one from a game developer's point of view, finish it completely, then stop.
+One run of this command is one iteration of a long-running loop on bevy_flora, a Bevy 0.20 crate of parametric, stylized procedural trees and shrubs that grow over time: 20 presets, bent and forking branches, CC0 bark and leaf scans, seasons (turning, leaf fall, snow, blossom, fruit), wind and shakes, felling, bucking, fire and harvest, and forest scale through pools, levels of detail, impostors and `Scatter`, deterministic per seed. Games use it as their forest: Sanctuary's forest is bevy_flora (it pins a git revision), and bevy_dark_factory's family issue F6 (`dark-incorporated/bevy_dark_factory#102`) puts it in the editor: place a tree by preset, age and seed, scatter a forest with a brush, tune a `.tree.ron` and watch it regrow, scrub the seasons. Do ONE improvement per iteration, the single most valuable one from a game developer's point of view, finish it completely, then stop.
 
 This crate must be correct AND good-looking AND cheap on the caller's frame. A tree with a hole in it, a branch floating off its parent, a tree that differs between two runs of the same seed, a GPU-grown tree that does not match the CPU one, and a forest that costs the frame more than the game can give are all failures, however good the screenshot looks. The judgement here is a technical artist's who ships open-world foliage: the silhouette reads as the species it is named for, every face is closed and lit, growth never jumps, and ten thousand trees cost a few milliseconds; and an API that leaves the terrain, the clock, the physics and the schedule to the caller (`CLAUDE.md`, "Conventions").
 
@@ -16,7 +16,7 @@ They override the choice of item in section 4, not the gates.
 State lives in `docs/loop-log.md`; rules and traps live in `CLAUDE.md`. Follow them; do not
 re-derive them.
 
-README and docs follow https://github.com/bevy-coven/.github/blob/main/DOCUMENTATION.md; a feature is
+README and docs follow https://github.com/dark-incorporated/.github/blob/main/DOCUMENTATION.md; a feature is
 not done until its README line and, if visible, its GIF exist. `README.md` stays at or under 250 lines;
 detail goes in `docs/guide/`, pictures in `docs/gallery.md`, and every media file is listed in
 `docs/media/README.md`.
@@ -126,7 +126,7 @@ were skipped.
   vertex and triangle counts, from a throwaway `examples/zz_probe.rs` that you delete before committing.
   A tree's spawn frame is what the README's "The frame the trees are spawned in" table measures.
 - **Determinism:** two gallery runs of the same filter give identical `stats.tsv` columns 1-10 (a tree is
-  the same for the same seed; bevy_grimoire's editor and the game must agree).
+  the same for the same seed; bevy_dark_factory's editor and the game must agree).
 
 The loop's host shares its cores with other loops, so a single run is noise: run the forest bench three
 times before and three times after, back to back on the same machine, and compare medians of medians.
@@ -177,7 +177,7 @@ each line with a measurement, not an impression:
 Before you pick an item, list the repository's open issues and triage them:
 
 ```sh
-gh issue list --repo bevy-coven/bevy_flora --state open --limit 100 \
+gh issue list --repo dark-incorporated/bevy_flora --state open --limit 100 \
   --json number,title,labels,createdAt --jq '.[] | "#\(.number) \(.title)"'
 ```
 
@@ -192,7 +192,7 @@ Then, in this order:
    others.
 2. **An issue labelled `consumer` is the pass's item next, ahead of the series and your own candidates.**
    A project built on this crate needs it and is waiting. The `consumer:<name>` label says which project;
-   `consumer:bevy_grimoire` is the owner's editor. Its own work resumes when the issue is closed as completed
+   `consumer:bevy_dark_factory` is the owner's editor. Its own work resumes when the issue is closed as completed
    and it moves its git pin to a `main` commit containing the fix. Take the oldest one you can work this pass.
    - **Build the general form.** The requester is the example, never a name in this crate's API, a path or a
      default: this crate serves other projects too. Where an issue asks for something shaped to one project,
@@ -242,7 +242,7 @@ what matters most to a game developer who will ship this:
    gameplay state (felled, burnt, picked, indexed) that disagrees with what is drawn.
 2. A cost the caller cannot afford: forest frame time at 10 000 trees, a spawn-frame hitch, a per-frame
    mesh rebuild or upload, an allocation per frame, an impostor or level of detail that pops.
-3. API friction: a game hand-rolling what the crate should hand it (Sanctuary's forest code; bevy_grimoire
+3. API friction: a game hand-rolling what the crate should hand it (Sanctuary's forest code; bevy_dark_factory
    #102's editor needs: place by preset, age and seed; scatter only under a brush stroke on the terrain;
    a `.tree.ron` that regrows live; seasons previewed from a date), setup that takes more lines than it should.
 4. Missing features a game expects from vegetation: per-tree condition (sick, dying; issue #87), willow
@@ -253,13 +253,13 @@ what matters most to a game developer who will ship this:
 Ownership is a gate: the terrain is the caller's (`FloraGround` is the hook), the clock and the calendar are
 the caller's (`FloraSeason`, `FloraWind` are values it sets), sky, sun and lights are `bevy_lights`', the
 physics is the caller's (`TreeShape` gives it capsules and a crown box), and editor panels, brushes and undo
-are bevy_grimoire's. Do not build those here; add a hook instead.
+are bevy_dark_factory's. Do not build those here; add a hook instead.
 
 State in one sentence why your pick beats the runner-up. If it is too big, carve off the most valuable
 self-contained slice. Record the ranked candidate list in the log, not only the winner.
 
 **A pass never ends idle** (owner, 2026-10-29: "If they're not addressing bugs or enhancing features, they need to evolve their own code base to support Bevy Emerge better or add new features. Research these things in home still, implement them. They shouldn't stay idle."). An empty issue list or a stale backlog is this step's input, never a reason to ship nothing, and a candidate is not "speculation" once it is researched. When the ranked list above gives no workable item, take the first of these that applies:
-1. **What the crate's consumers hand-roll.** Read how Sanctuary uses this crate (`gh repo clone Ladvien/sanctuary /tmp/fN/sanctuary -- --depth 1`, then `rg -l bevy_flora`; removed afterwards) and bevy_grimoire's family issues (`gh issue list -R bevy-coven/bevy_grimoire --label family`, F6 is #102 for trees). Find a formula, a wrapper or a query either writes by hand around this crate, and build its general form here, never named for either. Prove it with a test here.
+1. **What the crate's consumers hand-roll.** Read how Sanctuary uses this crate (`gh repo clone Ladvien/sanctuary /tmp/fN/sanctuary -- --depth 1`, then `rg -l bevy_flora`; removed afterwards) and bevy_dark_factory's family issues (`gh issue list -R dark-incorporated/bevy_dark_factory --label family`, F6 is #102 for trees). Find a formula, a wrapper or a query either writes by hand around this crate, and build its general form here, never named for either. Prove it with a test here.
 2. **A feature a shipping game in this domain expects and this crate lacks**, found by research: home-still first (`distill_search`; for a paper the corpus lacks, `paper_search`, `paper_download`, `scribe_convert`, then `distill_index`), then shipped-game practice, then section 5 before any code.
 3. **Depth on the weakest existing feature**: measure it against its research note's validation targets and improve the worst gap.
 

@@ -66,4 +66,4 @@ cargo run --release --example tree_file --features ron,file_watcher [-- --export
 
 ## Docs
 
-README and docs follow https://github.com/bevy-coven/.github/blob/main/DOCUMENTATION.md; a feature is not done until its README line and, if visible, its GIF exist. `README.md` stays at or under 250 lines: detail goes in `docs/guide/`, pictures in `docs/gallery.md`, and every media file is listed in `docs/media/README.md`.
+README and docs follow https://github.com/dark-incorporated/.github/blob/main/DOCUMENTATION.md; a feature is not done until its README line and, if visible, its GIF exist. `README.md` stays at or under 250 lines: detail goes in `docs/guide/`, pictures in `docs/gallery.md`, and every media file is listed in `docs/media/README.md`.
