@@ -630,8 +630,16 @@ fn main() {
     let leaf_fall = args.leaf_fall_animate.is_some();
     let fire = args.fire.is_some();
     // Unfocused, Bevy's default settings update 60 times a second; a benchmark
-    // must run flat out whatever has the focus.
-    app.insert_resource(bevy::winit::WinitSettings::continuous())
+    // must run flat out whatever has the focus. `continuous` waits for a window's redraw on Linux
+    // (X11 and Wayland), so offscreen, with no window, the app would never update again: there a
+    // reactive mode with no wait polls instead.
+    let settings = if args.is_offscreen() {
+        let flat_out = bevy::winit::UpdateMode::reactive(Duration::ZERO);
+        bevy::winit::WinitSettings { focused_mode: flat_out, unfocused_mode: flat_out }
+    } else {
+        bevy::winit::WinitSettings::continuous()
+    };
+    app.insert_resource(settings)
         .add_plugins((DefaultPlugins.set(window), FloraPlugin))
         .insert_resource(ClearColor(Color::srgb(0.55, 0.72, 0.92)))
         .insert_resource(GlobalAmbientLight {
