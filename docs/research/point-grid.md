@@ -106,8 +106,29 @@ takes `plantable(...)` and the trunk grid into its density.
 
 | Name | Value | Why |
 |---|---|---|
-| `PointGrid::CELL` | 8.0 world units | `FloraIndex::CELL`'s; a speed default, not a limit. Sanctuary's 16 ft and the example's 2 m are tunings for a radius. |
+| `PointGrid::CELL` | 8.0 world units | `FloraIndex::CELL`'s; a speed default, not a limit. Measured flat between 2 and 10 times the radius asked (see the findings), so the first draft's "cell = the radius you ask for most" was wrong. |
 | scan padding | `4 * f32::EPSILON * max(abs(at), radius)` | covers the rounding of `at - radius` and `at + radius`. |
+| map | `bevy::platform::collections::HashMap` (foldhash), as `falling.rs` | the first draft used `std`'s SipHash; the answers are booleans, so no iteration order or hasher shows. |
+
+## Measured findings (iteration 15)
+
+Apple M5, release, 200 000 random queries at 1.5 m over Poisson-disc trunks 3 m apart (`/tmp/f15`'s throwaway probe,
+deleted; load 8 to 10 from other tenants, so ratios, not microseconds, are the finding):
+
+| trunks | the list, per query | `PointGrid`, SipHash, cell 8 | `PointGrid`, foldhash, cell 8 | build, foldhash |
+|---|---|---|---|---|
+| 3 669 | 2.9 to 6.3 us | 0.30 us | 0.20 us | 0.4 ms |
+| 36 302 | 62 to 64 us | 0.37 us | 0.25 us | 4.6 ms |
+| 181 210 | 320 to 348 us | 0.53 us | 0.36 us | 21 ms |
+
+- A list is `O(trunks)` a query (the editor's brush stroke of 300 candidates over a 36 000-tree forest is 19 ms of
+  distance tests per stroke; the grid is 0.08 ms, plus a 5 ms build per stroke from `forest.trees`).
+- The cell is flat: at 36 302 trunks with foldhash, cells of 3, 4.5, 6, 8, 12 and 16 give 0.275, 0.247, 0.160, 0.249,
+  0.253 and 0.240 us; the radius-sized cell (1.5) is 0.31 and a half radius (0.75) 0.45. The extremes cost: 32 is 0.30.
+  The first draft's advice (`with_cell` the radius) was the slow end, because a hash lookup costs more than the few
+  trunks a larger cell holds.
+- SipHash against foldhash: 1.4 to 2.0 times at the small cells, 1.5 times at 8, so the grid uses Bevy's map.
+- `near(Vec2::ZERO, f32::INFINITY)` returns in 1 us whatever the set (it walks the occupied cells of the box, not the reach).
 
 ## What great looks like
 
