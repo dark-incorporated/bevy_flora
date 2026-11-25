@@ -96,7 +96,7 @@ impl NodeState {
         if params.foliage.enabled && node.length > 0.0 {
             state.leaf_scale = node_leaf_scale(node, &params.growth);
             if params.foliage.placement == FoliagePlacement::AllBranches {
-                state.leaf_count = distributed_leaf_amount(&params.foliage, node.length, node.height_ratio);
+                state.leaf_count = distributed_leaf_amount(&params.foliage, node.kind, node.length, node.height_ratio);
             }
         }
 
