@@ -21,9 +21,10 @@
 //! // `FloraGround` (terrain).
 //! ```
 
+use std::collections::HashMap;
 use std::f32::consts::{SQRT_2, TAU};
 
-use bevy::math::{Quat, Rect, Vec2, Vec3};
+use bevy::math::{IVec2, Quat, Rect, Vec2, Vec3};
 use bevy::reflect::Reflect;
 use bevy::transform::components::Transform;
 
@@ -178,6 +179,142 @@ impl ScatterPoint {
     /// point's scale, so the trunk meets the ground all round on a slope.
     pub fn transform_on(&self, ground: &FloraGround, params: &TreeParams) -> Transform {
         self.transform(ground.footing(self.position, params.base_radius() * self.scale))
+    }
+}
+
+/// How far past `radius` a [`PointGrid`] query scans, in units of `f32::EPSILON` times the larger of
+/// the query's coordinates and its radius: covers the rounding of `at - radius` and `at + radius`, so
+/// a point a hair inside the radius is never lost to a cell border.
+const SCAN_SLACK: f32 = 4.0 * f32::EPSILON;
+
+/// Points on the ground, looked up by distance: what a second layer of plants, a brush stroke over a
+/// painted forest or a replant keeps clear of. A hashed grid of square cells (only the cells that hold
+/// something exist), so [`near`](Self::near) costs the points around the query, not all of them, and
+/// the ground may be of any extent.
+///
+/// The set carries no distance: a neighbourhood is a radius that belongs to the question (a juniper
+/// keeps 1.5 m from a trunk, a fallen log 6 m), so each query brings its own. The cell size only prices
+/// a query and never changes its answer: [`with_cell`](Self::with_cell) the radius you ask for most.
+///
+/// ```
+/// use bevy::math::{Rect, Vec2};
+/// use bevy_flora::{PointGrid, Scatter};
+///
+/// let area = Rect::new(-100.0, -100.0, 100.0, 100.0);
+/// let trees = Scatter::new(area, 7.0).points();
+/// // Shrubs at least 2.5 m apart and 1.5 m from every trunk.
+/// let trunks: PointGrid = trees.iter().map(|tree| tree.position).collect();
+/// let shrubs = Scatter { seed: 2, ..Scatter::new(area, 2.5) }
+///     .points_where(|at| if trunks.near(at, 1.5) { 0.0 } else { 1.0 });
+/// assert!(shrubs.iter().all(|shrub| trees.iter().all(|tree| tree.position.distance(shrub.position) >= 1.5)));
+/// ```
+///
+/// Pure CPU and deterministic: an answer depends on the points and the query, never on the order they
+/// were inserted in or on the cell size.
+#[derive(Clone, Debug)]
+pub struct PointGrid {
+    cell: f32,
+    cells: HashMap<IVec2, Vec<Vec2>>,
+    len: usize,
+    /// The box of cells ever filled, corners included; `None` while the grid is empty.
+    filled: Option<(IVec2, IVec2)>,
+}
+
+impl Default for PointGrid {
+    fn default() -> Self {
+        Self::with_cell(Self::CELL)
+    }
+}
+
+impl PointGrid {
+    /// The cell side of a grid that was not given one, in world units: [`FloraIndex::CELL`](crate::FloraIndex::CELL)'s.
+    pub const CELL: f32 = 8.0;
+
+    /// An empty grid of square cells `cell` world units across. A cell that is not a positive finite
+    /// number is [`PointGrid::CELL`]: it only sets what a query costs, so no answer depends on it.
+    pub fn with_cell(cell: f32) -> Self {
+        let cell = if cell.is_finite() && cell > 0.0 { cell } else { Self::CELL };
+        Self { cell, cells: HashMap::new(), len: 0, filled: None }
+    }
+
+    /// The side of a cell, world units.
+    pub fn cell(&self) -> f32 {
+        self.cell
+    }
+
+    /// How many points the grid holds.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Whether the grid holds no point.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Adds a point (world x and z, as [`ScatterPoint::position`]). A point that is not finite has no
+    /// cell and is refused: `false`, and nothing is stored.
+    pub fn insert(&mut self, at: Vec2) -> bool {
+        if !at.is_finite() {
+            return false;
+        }
+        let cell = self.cell_of(at);
+        self.cells.entry(cell).or_default().push(at);
+        self.len += 1;
+        self.filled = Some(match self.filled {
+            None => (cell, cell),
+            Some((low, high)) => (low.min(cell), high.max(cell)),
+        });
+        true
+    }
+
+    /// Whether some point of the grid lies strictly less than `radius` from `at` (as `Vec2::distance`
+    /// measures it). A radius that is not a positive number (zero, negative, `NaN`) and a query point
+    /// that is not finite find nothing. An infinite or huge radius is answered at once: the cost is
+    /// bounded by the cells the grid holds, never by how far the query reaches.
+    pub fn near(&self, at: Vec2, radius: f32) -> bool {
+        if radius.is_nan() || radius <= 0.0 || !at.is_finite() {
+            return false;
+        }
+        let Some((first, last)) = self.filled else { return false };
+        let slack = SCAN_SLACK * at.abs().max_element().max(radius);
+        let reach = Vec2::splat(radius + slack);
+        // The query's box of cells, cut to the cells that were ever filled.
+        let low = self.cell_of(at - reach).max(first);
+        let high = self.cell_of(at + reach).min(last);
+        if low.x > high.x || low.y > high.y {
+            return false;
+        }
+        let hit = |points: &Vec<Vec2>| points.iter().any(|point| point.distance(at) < radius);
+        let span = (i64::from(high.x) - i64::from(low.x) + 1) * (i64::from(high.y) - i64::from(low.y) + 1);
+        if span > self.cells.len() as i64 {
+            // A reach wider than the ground the points cover: the occupied cells are fewer than the box.
+            return self.cells.values().any(hit);
+        }
+        (low.y..=high.y).any(|y| (low.x..=high.x).any(|x| self.cells.get(&IVec2::new(x, y)).is_some_and(hit)))
+    }
+
+    /// The cell of `at`; `as` saturates, so even a huge coordinate has one.
+    fn cell_of(&self, at: Vec2) -> IVec2 {
+        IVec2::new((at.x / self.cell).floor() as i32, (at.y / self.cell).floor() as i32)
+    }
+}
+
+impl Extend<Vec2> for PointGrid {
+    /// [`insert`](PointGrid::insert) each point; those that are not finite are left out.
+    fn extend<I: IntoIterator<Item = Vec2>>(&mut self, points: I) {
+        for point in points {
+            self.insert(point);
+        }
+    }
+}
+
+impl FromIterator<Vec2> for PointGrid {
+    /// A grid of [`PointGrid::CELL`] cells of these points; those that are not finite are left out.
+    fn from_iter<I: IntoIterator<Item = Vec2>>(points: I) -> Self {
+        let mut grid = Self::default();
+        grid.extend(points);
+        grid
     }
 }
 
@@ -538,5 +675,109 @@ mod tests {
         assert_eq!(t.translation, Vec3::new(3.0, 2.5, -4.0));
         assert_eq!(t.scale, Vec3::splat(1.2));
         assert!((t.rotation.to_euler(bevy::math::EulerRot::YXZ).0 - 1.0).abs() < 1e-5);
+    }
+
+    /// Random points over `half` by `half` around the origin, negative coordinates included.
+    fn random_points(count: usize, half: f32, seed: i32) -> Vec<Vec2> {
+        let mut rng = SeededRng::new(seed);
+        (0..count).map(|_| Vec2::new(rng.range(-half, half), rng.range(-half, half))).collect()
+    }
+
+    /// The test every caller wrote before `PointGrid`.
+    fn near_by_list(points: &[Vec2], at: Vec2, radius: f32) -> bool {
+        points.iter().any(|p| p.distance(at) < radius)
+    }
+
+    #[test]
+    fn a_point_grid_answers_as_the_list_it_replaces_whatever_its_cell() {
+        let points = random_points(1_500, 100.0, 3);
+        let queries = random_points(1_500, 110.0, 4);
+        let (mut near, mut far) = (0, 0);
+        for cell in [0.7, 2.0, 8.0, 500.0] {
+            let grid = {
+                let mut grid = PointGrid::with_cell(cell);
+                grid.extend(points.iter().copied());
+                grid
+            };
+            assert_eq!(grid.len(), points.len());
+            for radius in [0.4, 1.5, 3.0, 17.0, 120.0] {
+                for &at in &queries {
+                    let answer = grid.near(at, radius);
+                    assert_eq!(answer, near_by_list(&points, at, radius), "cell {cell}, radius {radius}, at {at}");
+                    if answer { near += 1 } else { far += 1 }
+                }
+            }
+        }
+        assert!(near > 5_000 && far > 5_000, "the queries must be both near and far: {near} near, {far} far");
+    }
+
+    #[test]
+    fn what_the_grid_answers_does_not_depend_on_the_order_the_points_went_in() {
+        let points = random_points(800, 60.0, 5);
+        let forward: PointGrid = points.iter().copied().collect();
+        let backward: PointGrid = points.iter().rev().copied().collect();
+        for &at in &random_points(800, 70.0, 6) {
+            for radius in [1.0, 4.0, 25.0] {
+                assert_eq!(forward.near(at, radius), backward.near(at, radius), "radius {radius}, at {at}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_point_exactly_a_radius_away_is_not_near_and_cell_borders_split_nothing() {
+        // Points on cell borders and across the origin, with queries that land exactly on one.
+        let grid: PointGrid = [Vec2::new(-8.0, 0.0), Vec2::new(8.0, 8.0), Vec2::new(0.0, -16.0)].into_iter().collect();
+        assert!(!grid.near(Vec2::new(-8.0, 3.0), 3.0), "3 m away is not less than 3 m");
+        assert!(grid.near(Vec2::new(-8.0, 3.0), 3.01));
+        assert!(grid.near(Vec2::new(-0.01, 0.0), 8.0), "across the border at 0");
+        assert!(grid.near(Vec2::new(7.99, 7.99), 0.05), "across the border at 8");
+        assert!(!grid.near(Vec2::new(4.0, -8.0), 8.9), "the nearest is (0, -16), 8.94 m away");
+        assert!(grid.near(Vec2::new(4.0, -8.0), 9.0));
+    }
+
+    #[test]
+    fn a_radius_that_is_not_a_distance_finds_nothing_and_an_unbounded_one_does_not_walk_the_ground() {
+        // Two points 2 000 km apart: the box a query reaching them both spans 6e10 cells of 8 m, and
+        // the grid holds two, so an answer that stepped through the box would never return.
+        let grid: PointGrid = [Vec2::new(-1.0e6, 0.0), Vec2::new(1.0e6, 5.0e5)].into_iter().collect();
+        for radius in [0.0, -1.0, f32::NAN, f32::NEG_INFINITY] {
+            assert!(!grid.near(Vec2::new(-1.0e6, 0.0), radius), "radius {radius}");
+        }
+        for radius in [f32::INFINITY, f32::MAX] {
+            assert!(grid.near(Vec2::new(500.0, -500.0), radius), "radius {radius}");
+        }
+        assert!(!PointGrid::default().near(Vec2::ZERO, f32::INFINITY), "an empty grid has nothing near");
+        for at in [Vec2::NAN, Vec2::new(f32::INFINITY, 0.0), Vec2::new(0.0, f32::NEG_INFINITY)] {
+            assert!(!grid.near(at, 10.0), "a query at {at} is not at a place");
+        }
+    }
+
+    #[test]
+    fn a_point_that_is_not_a_place_is_refused_and_a_cell_that_is_not_a_size_is_the_default() {
+        let mut grid = PointGrid::with_cell(4.0);
+        assert!(grid.insert(Vec2::new(1.0, 1.0)));
+        for bad in [Vec2::NAN, Vec2::new(f32::INFINITY, 0.0), Vec2::new(0.0, f32::NEG_INFINITY)] {
+            assert!(!grid.insert(bad), "{bad}");
+        }
+        assert_eq!(grid.len(), 1);
+        let collected: PointGrid = [Vec2::NAN, Vec2::ONE].into_iter().collect();
+        assert_eq!(collected.len(), 1);
+        for cell in [0.0, -2.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(PointGrid::with_cell(cell).cell(), PointGrid::CELL, "cell {cell}");
+        }
+        assert!(PointGrid::default().is_empty());
+    }
+
+    #[test]
+    fn a_layer_thinned_by_the_grid_keeps_the_trees_the_list_keeps() {
+        let area = square(60.0);
+        let trees = Scatter { species: vec![1.0, 1.0], grove_size: 20.0, ..Scatter::new(area, 6.0) }.points();
+        let layer = Scatter { seed: 2, ..Scatter::new(area, 2.5) };
+        let trunks: PointGrid = trees.iter().map(|tree| tree.position).collect();
+        let by_grid = layer.points_where(|at| if trunks.near(at, 1.5) { 0.0 } else { 1.0 });
+        let by_list = layer.points_where(|at| if trees.iter().any(|tree| tree.position.distance(at) < 1.5) { 0.0 } else { 1.0 });
+        assert_eq!(by_grid, by_list);
+        let all = layer.points();
+        assert!(!by_grid.is_empty() && by_grid.len() < all.len(), "{} of {} kept", by_grid.len(), all.len());
     }
 }
