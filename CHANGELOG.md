@@ -7,10 +7,29 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
-A parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`).
+A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), and a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`).
 
 ### Added
 
+- **`PointGrid`: points on the ground in a hashed grid, and `near(at, radius)`, the lookup a layer keeps clear of what
+  stands with** (`docs/research/point-grid.md`). Four copies of the same structure existed: Sanctuary's private
+  `PointGrid` for its deadfall and undergrowth, this crate's `forest` example (a hand-rolled 2 m hash for the shrubs'
+  distance from the trunks), the editor's forest brush (`ops_forest.rs::plant`: one pass over the whole forest per
+  candidate) and this guide's own undergrowth snippet ("look the trunks up in a grid instead of all of them"). The
+  general form is `PointGrid::default()` / `with_cell` / `FromIterator<Vec2>` / `Extend<Vec2>` / `insert(at) -> bool`
+  and `near(at, radius) -> bool` (is a point strictly less than `radius` from `at`), used through `Scatter::points_where`:
+  `layer.points_where(|at| if trunks.near(at, 1.5) { 0.0 } else { 1.0 })`, which composes with `points_with`, clearings
+  and slope tests. The radius belongs to the question and the set carries none (a shrub keeps 1.5 m from a trunk, a
+  fallen log 6 m from the same trunks), so each query brings its own. A point that is not finite is refused (`insert`
+  returns `false`), a radius that is not a positive number and a query that is not at a place find nothing, and an
+  infinite radius (`f32::INFINITY`, `f32::MAX`) is answered at once from the occupied cells, not by stepping through the
+  reach (the bug class of `FloraIndex` #92). The answer equals the `points.iter().any(|p| p.distance(at) < radius)` the
+  callers wrote (a test compares them over 1 500 points and 1 500 queries at four cell sizes and five radii, and a
+  thinned `Scatter` against the list's), whatever the cell and the order the points went in. Measured (Apple M5,
+  release, 200 000 queries at 1.5 m over trunks 3 m apart): 0.25 us a query among 36 000 trunks where the list costs
+  62 us (about 250 times), 0.36 us among 181 000 where it costs 320 to 350 us, a 4.6 ms or 21 ms build; the cell is flat
+  from two to ten times the radius. `examples/forest.rs`'s `--undergrowth` and the guide's snippet now use it (the
+  hand-rolled grid is gone). Pure CPU, `bevy::math` and Bevy's map only.
 - **`TreeParams::fields`, `ParamField`, `ParamKind`, `ParamUnit`, `TreeParams::field` and `set_field`, `ParamError`: the
   range, unit and default of every number of a tree, and a checked edit** (`docs/research/param-fields.md`). The
   editor that tunes a species (`bevy_dark_factory`'s `tree_edit`, F6) walks `serde_json::to_value(&TreeParams)` by dotted

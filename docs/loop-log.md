@@ -1472,3 +1472,128 @@ lowest, 24 GB after. Leftovers of earlier passes, listed and not touched: the wo
 `42ec6a4`, on `origin/main`, with uncommitted changes: not clean, so not a removal candidate), `wiggum/parked-pass-9-20261102-054127`
 (stale, above), and the branches `loop/iter-4` to `-14` (not deleted).
 
+## Iteration 15 — 2026-11-25 — Keeping a layer clear of what stands: `PointGrid` (and why `FloraSeason::of_date` was dropped)
+
+Pass on `loop/iter-15` from `main` `d73b2e7`, Apple M5 (Metal, macOS 26.6.2), host `mac_air`, load 8 to 10 (other loops build
+here). Home-still at the start: `system_status` healthy (19 543 documents, 19 387 embedded, both scribes `idle`, distill
+`bge-m3` healthy), `distill_search` and `markdown_read` worked. `catalog_recent`'s newest events are still iteration 13's
+(2026-11-17 to 2026-11-20): no tree, plant, foliage, phenology, fire, impostor, wind or felling document, so no
+`Research: corpus` commit; the sources this pass used were added to `docs/research/corpus.md` with the note.
+
+**Triage.** `gh issue list` on `bevy-coven/bevy_flora`: 0 open (last closed #95); no bug and no `consumer` issue. bevy_grimoire has
+no open `family` issue. One parked branch, `wiggum/parked-pass-9-20261102-054127`: stale (its item is on `main`), ignored,
+not deleted. Release: `v0.47.1` was tagged 11:55 and this pass ended after 14:45, so the 6-hour rule forbids one; the change
+rides in the next release (`[Unreleased]` is written). So section 4's first fallback applied: read what the consumers
+hand-roll (Sanctuary shallow clone, the editor `bevy_dark_factory`, `bevy_elements`).
+
+**The first backlog item was dropped, and why.** Iteration 14 ranked `FloraSeason::of_date` first (the editor's
+`forest_season::season_for`, day of year, hemisphere, 1 March as day 60). Read this pass it fails the ownership gate: the
+calendar is the caller's, and `bevy_elements` already owns the date-to-season mapping (`SeasonState::at`, a real-calendar
+curve with autumn from 1 September to 15 October, leaf fall to 30 November, leaf-out 1 April to 10 May) and drives
+`FloraSeason` from it (`flora.rs::drive_season`); `of_year(t)` is already the hook that takes the year's progress. A third
+calendar here would also disagree with the second: mapped from 1 March, `of_year` hangs the leaves until 23 January (t = 0.9),
+where Dox et al. 2020 (`10.1093_treephys_tpaa058`) put beech senescence "in mid-late October" and birch "in late September
+to mid-October" at 51 degrees N. Recorded as a falsified backlog item and a finding, not deleted. (The editor's own copy
+also has a leap-year slip, found by reading and not run: `SPRING_START_DAY` 60 is 29 February in a leap year.)
+
+**What changed and why it ranked first.** Four copies of one structure, found by reading the consumers: Sanctuary's private
+`PointGrid` (`layout.rs`: `insert`, `near(p, radius)`; deadfall and undergrowth ask it with two radii), this crate's `forest`
+example (a hand-rolled 2 m hash for the shrubs' clearance from the trunks), the editor's forest brush (`ops_forest.rs::plant`:
+one pass over the whole forest per candidate) and this guide's own undergrowth snippet ("look the trunks up in a grid instead
+of all of them"). Built the general form in `scatter.rs`: **`PointGrid`** (hashed grid of square cells; `default`,
+`with_cell`, `insert(at) -> bool`, `FromIterator<Vec2>`, `Extend<Vec2>`, `near(at, radius) -> bool`, `len`, `is_empty`,
+`cell`), used through the existing `Scatter::points_where` density: `layer.points_where(|at| if trunks.near(at, 1.5) { 0.0 } else { 1.0 })`,
+which composes with `points_with`, clearings and slope tests (a `Scatter::points_clear_of` method would not). The radius is the
+question's, not the set's (Canham et al. 2006: neighbourhood radii of 3.2 to 19.8 m by species), so each query brings its own.
+Hostile input: a point that is not finite is refused (`insert` returns `false`), a radius that is not positive and a query that
+is not at a place find nothing, `f32::INFINITY` and `f32::MAX` are answered from the occupied cells (a 2 000 km box is two
+cells; the #92 bug class), a cell that is not a size is the default one (it only prices a query). The example and the guide now
+use it and the hand-rolled grid is gone.
+
+Candidates, ranked: (1) this; (2) a glide with no per-tree cost (iteration 11, 13 and 14's item); (3) a slider range and a label
+per `ParamField` (iteration 14's flaw: the range is a limit, not a slider); (4) the hull crown by leaf size; (5) the willow
+(D-052). (1) beat (2) and (3) because four consumers hand-roll it today and the editor's version is `O(forest)` per candidate
+in the headline F6 feature (a brush); none of (2) to (5) has a consumer asking.
+
+**Assumed decisions** (owner may override; no issue to record them on, so here, in the note and the commit body): the name
+`PointGrid` and the methods `near` and `insert` are Sanctuary's own (a drop-in swap when it moves its pin); a bare `bool` for
+the refusal of `insert` (the one reason is "not finite"); no payload per point and no `remove` (a forest being edited
+rebuilds the grid; `FloraIndex` already holds entities); `near` is a bool (no `nearest` or `count`, which no copy needs).
+
+**Sources.** Botanical/model: Canham et al. 2006 (`10.1890_1051-0761(2006)016[0540:naoctc]2.0.co;2`: "Effective neighborhood
+radii ... ranged from 3.2 to 19.8 m"), Benes et al. 2022 (`10.1145_3502220`: "Poisson-disc distribution (minimal distance
+requirement) among plants and from the building envelope"); for the dropped item Dox et al. 2020 (`10.1093_treephys_tpaa058`).
+Shipping practice: Ericson, Real-Time Collision Detection ch. 7 (`book_real_time_collision_detection_ericson`: hashed storage
+"allowing the grid to be of infinite extent"), a procedural-modelling survey (`10.1111_cgf.12276`: layers of a world must see
+each other), the four consumers. Technical: Bridson 2007 (not indexed), `FloraIndex`'s note for the unbounded-radius bug class.
+Note: `docs/research/point-grid.md`. Pending index: Bridson 2007; Epic's PCG and SpeedTree placement tooling were not read.
+
+**Numbers** (`/tmp/f15`, removed; findings in `/tmp/f15/findings.md`, critique in `/tmp/f15/critique.md`).
+
+- Tests: `cargo nextest run --all-features` 394 passed (388 before + 6 new: `a_point_grid_answers_as_the_list_it_replaces_whatever_its_cell`,
+  `what_the_grid_answers_does_not_depend_on_the_order_the_points_went_in`, `a_point_exactly_a_radius_away_is_not_near_and_cell_borders_split_nothing`,
+  `a_radius_that_is_not_a_distance_finds_nothing_and_an_unbounded_one_does_not_walk_the_ground`,
+  `a_point_that_is_not_a_place_is_refused_and_a_cell_that_is_not_a_size_is_the_default`, `a_layer_thinned_by_the_grid_keeps_the_trees_the_list_keeps`);
+  `cargo test --all-features --doc` 40 passed (one new, `PointGrid`'s); clippy `--all-targets --all-features -D warnings` clean;
+  `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features` clean; `cargo build` (default), `--features serde` and
+  `cargo build --examples --all-features` clean; `cargo package --locked` verified. **Not run, on purpose:** default-features
+  `cargo build --release` and `cargo build --examples` (a cold Bevy unification for a feature set no changed code reaches; CI's job;
+  the `--all-features` release builds of every example ran).
+- Probe (a throwaway example, deleted): 200 000 queries at 1.5 m over Poisson-disc trunks 3 m apart. The list: 2.9 to 6.3 us a
+  query at 3 669 trunks, 62 to 64 us at 36 302, 320 to 348 us at 181 210. `PointGrid` (cell 8): 0.20, 0.25 and 0.36 us; builds
+  of 0.4, 4.6 and 21 ms. About 250 times at 36 000 trunks. **The first draft was wrong twice:** the doc advised a cell as wide
+  as the radius asked, and the sweep found the cell flat from 2x to 10x the radius (0.24 to 0.31 us at 36 302 trunks; the
+  radius-sized cell is the slow end, because a hash lookup costs more than the few trunks a larger cell holds), and `std`'s
+  SipHash map was 1.4 to 2.0 times slower than Bevy's, which `falling.rs` already uses. Both corrected before the commit.
+- Gallery, 526 scenarios, base `d73b2e7` binaries and the new tree (Apple M5): 526 PNG = 526 rows in each, none under 100 KB,
+  flags `-` x 526, no `BLANK_CAPTURE`/`CAPTURE_TIMEOUT`, no `ERROR`/`panicked`, three benign `WARN`s; **0 of 526 PNGs differ
+  (`cmp`), `stats.tsv` columns 1-10 identical**; `compare_gallery` of the 7 CI scenarios cpu against `--gpu`: 0.218 mean of
+  means, worst 0.922, worst close 96.52%, before and after, and as iterations 13 and 14.
+- Forest bench (pool, 10 000 oak, `--offscreen --deterministic`), ABBA x3, load 8 to 10: median ms/frame before 10.32, after
+  9.36 (median of the run medians 10.23 against 9.73); cpu ms/frame 31.90 against 31.00; p95 about 12 ms both. Noise, no
+  regression: the change is off the frame path (naive and gpu-live not run, no code of theirs changed).
+- The one use in the crate: `forest --scatter oak:3,birch:2,maple:2 --grove 30 --clearing 14 --undergrowth shrub:2.5 --eye -14,1.8,-30
+  --at 6,1,0 --fov 55 --sun 20,25,-30 --wind 0 --screenshot`: 6 235 trees (trees and shrubs) before and after, the screenshot
+  byte for byte equal (2 192 450 bytes); placement 101.6 ms before, 97.6 ms after.
+
+**Critique and verdict** (`/tmp/f15/critique.md`): `PointGrid` is **GREAT** against the note's five validation targets (equal to
+the list over 1 500 x 1 500 x 4 cells x 5 radii, a thinned `Scatter` equal to the list's, hostile radius and points refused or
+answered at once, the example's output unchanged, 250 times faster at 36 000 trunks). Flaws, none stopping a ship: `near` is
+a yes/no (a density that falls off with the distance to the nearest trunk would need a `nearest` or `count`; no copy asks);
+no `remove`; the proof against Sanctuary and the editor is equivalence (their builds are never run here) and both match on the
+strict `<` and on world units; the timings were taken at load 8 to 10 (ratios, not microseconds, are the finding). No visual
+change, so no clip, no gallery scenario and no `qa/visual_findings.md` entry.
+
+**Commits** (`loop/iter-15`): `397c51d` Research: PointGrid, `78041b6` the implementation, `6fba3b0` docs. Sibling repositories:
+none touched. **For the editor** when it moves its pin: `ops_forest.rs::plant` replaces its `forest.trees.iter().any(...)` per
+candidate with `let trees: PointGrid = forest.trees.iter().map(|t| Vec2::new(t.at.0, t.at.1)).collect();` and
+`trees.near(at, plant.spacing_m)`; its `season_for` can use `bevy_elements`' `SeasonState` for leaves and blossom (and keep
+`of_year` only for the calendar-driven snow the preview wants), and fix `SPRING_START_DAY` in a leap year. **For Sanctuary**: delete
+its private `PointGrid` (same name, same `insert`/`near`, `insert` returns `bool` now) and `use bevy_flora::PointGrid`.
+
+### Ranked backlog after iteration 15
+
+1. **A glide with no per-tree cost** (iteration 11's item 2): a leaf marker so only leaf meshes are tagged, or a shared slot in the
+   buffer for trees that began together; and the leaves a glide loses falling (`LeafBurst`).
+2. **A slider range and a label per field**: a `typical` span for each `ParamField` (the 20 presets' span, or a designed one) and a
+   one-line label, if the editor asks; the table is the place for both.
+3. **`PointGrid::nearest` / a count**, only when a consumer asks: Sanctuary's undergrowth density by `tree_density` (how many trunks
+   are around) is the likeliest, and the grid already holds what it needs.
+4. **The hull crown by leaf size**: `crown_hull` takes positions only, so a `CrownStyle::Hull` tree growing on the CPU still pops its
+   hull when a leaf is born.
+5. **Finish the willow (D-052)**: leaf ribbons, strands kept as lines at level 1, limbs whose leaves reach their tips, a greener
+   strand colour, a forked trunk; D-074 / D-075 on big; `RadialOutward` facing on a growing branch.
+
+Not a crate item, but found: on a real calendar `of_year`'s curve is long in autumn (leaves hang to late January from a 1 March
+start); the better calendar curve is `bevy_elements`' and the editor should use it for leaves and blossom.
+
+**Environment, for the next pass.** `CARGO_INCREMENTAL=0` is still needed. The supervisor's `CARGO_TARGET_DIR=~/target/flora-loop`
+now holds a warm `debug` and `release`: the baseline binaries (`gallery`, `forest`, `compare_gallery`, `inspect`) were
+up to date at `d73b2e7` before the first edit (3 m 39 s, one crate compile), so no baseline worktree was needed; they were copied
+to `/tmp/f15/before/bin` before the first edit. Each release rebuild after an edit took 4 to 6 minutes (host load 8 to 10); the
+warm all-features test profile ran the gate in 12 minutes (nextest 18 s once built). Slips, not repeated: `edit` needs a read
+that *displayed* the line it anchors to (a first attempt on an un-displayed line fails and a straight retry succeeds), `gh repo
+clone` and `distill_search` output is huge (redirect the first, use `limit` of 3 or fewer, `include_text` false, for the second),
+and a `bash` call over 60 s is backgrounded, so long runs go `async` with their output in a file.
+
+**Merge and clean-up (iteration 15).** See the next line once merged.

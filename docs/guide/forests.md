@@ -159,21 +159,23 @@ fn with_a_stand(forest: &Scatter, centre: Vec2) -> Vec<ScatterPoint> {
 
 *`cargo run --release --example forest -- --trees 3000 --scatter pine:1,maple:1 --grove 30 --stand 0,0,45 --season 0.8,0 --eye 0,60,-150 --at 0,0,0 --wind 0 --deterministic --screenshot stand.png`*
 
-Undergrowth is a second, closer scatter that keeps clear of the trunks, drawn from the `Shrub` preset (a mound of arching stems about 1.4 m high and 1.9 m across: 5 900 wood and 17 600 leaf triangles up close, 2 100 in all at its coarsest level):
+Undergrowth is a second, closer scatter that keeps clear of the trunks, drawn from the `Shrub` preset (a mound of arching stems about 1.4 m high and 1.9 m across: 5 900 wood and 17 600 leaf triangles up close, 2 100 in all at its coarsest level). What it keeps clear of is a `PointGrid`: points on the ground in a hashed grid, so `near(at, radius)` costs the few points around the spot, not every tree of the forest, and the radius is the question's (a shrub keeps 1.5 m from a trunk, a fallen log 6 m from the same trunks):
 
 ```rust,no_run
 use bevy::prelude::*;
 use bevy_flora::prelude::*;
 
-// Shrubs at least 2.5 m apart and 1.5 m from every trunk. For a big forest, look the trunks up in a
-// grid instead of all of them (the `forest` example does).
+// Shrubs at least 2.5 m apart and 1.5 m from every trunk.
 fn plant_undergrowth(commands: &mut Commands, trees: &[ScatterPoint], area: Rect, shrubs: &Handle<TreePool>) {
+    let trunks: PointGrid = trees.iter().map(|tree| tree.position).collect();
     let layer = Scatter { seed: 2, ..Scatter::new(area, 2.5) };
-    for shrub in layer.points_where(|at| if trees.iter().any(|t| t.position.distance(at) < 1.5) { 0.0 } else { 1.0 }) {
+    for shrub in layer.points_where(|at| if trunks.near(at, 1.5) { 0.0 } else { 1.0 }) {
         commands.spawn((PooledTree { pool: shrubs.clone(), variant: shrub.variant }, shrub.transform(0.0)));
     }
 }
 ```
+
+The same grid keeps a brush stroke clear of the trees already painted (`trees.iter().any(..)` per candidate is one pass over the whole forest each), and keeps trees clear of a road's or a village's points: any `Vec2` set will do. A point that is not finite is refused (`insert` returns `false`), a radius that is not a positive number finds nothing, and an infinite radius is answered at once.
 
 ![Eye level in a birch grove with oaks beyond: shrubs stand between the trunks in thickets and gaps](../media/undergrowth.jpg)
 
