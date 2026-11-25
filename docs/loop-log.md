@@ -1295,3 +1295,37 @@ commit that contains this.
    for a panel (the ranges are in `limits.rs`) and a dotted-path edit; wait for the requester to file it. Also Sanctuary's
    rain-and-fire rule (`douse_forest`): only a hook if two consumers want the same rule.
 5. **A YAML-only `tree_file`** (it requires `ron` today) and a shipped `maple.tree.yaml` that is `TreePreset::Maple.params()`.
+
+**Release and merge.** Later commits on `loop/iter-13`: `d0d6ed7` the three changed clips, `9232e4b` the reload test and the
+guide's write-then-rename note, `f56945b` this entry. Merge `e9fede0` on `main` (tree identical to `loop/iter-13`; the
+full gate ran on the tree before the reload test, `cargo nextest` (379) and clippy `-D warnings` on the final tree, no
+re-gate on the merge because the trees are equal), then **`release: v0.47.1` (`df03dae`)**, the first release since
+v0.47.0 (25 days: the 6-hour rule holds), carrying iterations 9 to 13: `cargo semver-checks check-release --all-features`
+202 checks, 202 pass, "no semver update required", so a patch. `cargo publish --dry-run` then `cargo publish`:
+**<https://crates.io/crates/bevy_flora/0.47.1>**, tag `v0.47.1` on `df03dae`, GitHub release created. README: the
+compatibility table and install snippet say `0.47` and need no change; the frame times in the README, `lib.rs`, `pool.rs`
+and ARCHITECTURE were not requoted: they are Apple M4 Pro measurements, this release's CHANGELOG entry carries no new frame
+time (nothing on a hot path changed), and this host at load 14 to 46 cannot reproduce that machine's numbers. #95 is closed
+(the push of `Fixes #95` closed it; the comment with the assumed decisions and the `assumed-decision` label are on it).
+
+**Environment, for the next pass.** (1) The supervisor's `CARGO_TARGET_DIR=/Users/ladvien/target/flora-loop` did not exist
+at the start, and `CARGO_INCREMENTAL=1` with `~/.cargo/config.toml`'s `rustc-wrapper = sccache` stops cargo at once
+("incremental compilation is prohibited"): export `CARGO_INCREMENTAL=0`. (2) I first used the shared
+`~/.cargo-target-shared/global` (84 GB of other tenants' debug builds): its disk hit 100% (212 MB free) at 09:28 while the
+gate ran, `cargo nextest` failed with ENOSPC, and later another repo's `cargo test` loop and mine kept rebuilding the
+same Bevy crates against each other for 25 minutes; I moved to `~/target/flora-loop` (cold: 55 minutes to build the
+debug test profile with Bevy under that load, 12 GB), which is now warm and kept for the next pass. (3) The forest
+bench's `gpu-live` needs `--trees 1000 --frames 200` (the default 10 000 trees print nothing for many minutes), and the
+example binaries find `examples/assets` only with `BEVY_ASSET_ROOT=<clone>` when run from the target directory.
+
+**Clean-up (iteration 13).** Removed, mine: `/tmp/f13` (380 MB: base binaries, galleries, screenshots, logs, scripts), the
+clone's `target/` (1.9 GB: the 11 clips' frames, `target/capture`), and in the shared target
+`~/.cargo-target-shared/global` the `release/` directory (4.9 GB; it did not exist before this pass), `semver-checks/`
+(29 MB) and `package/bevy_flora-0.47.0`; `df -h /`: 39 GB free at the start, 117 MB at the lowest, 35 GB after. Kept:
+`~/target/flora-loop` (12 GB, the supervisor's directory, warm) and my debug artifacts among other tenants' in the shared
+`debug/` (not separable by name, so left). No worktree or baseline checkout was made (`git worktree list` shows the clone
+and the docs tool's). Leftover of someone else's, listed and not touched: the worktree
+`/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, 86 MB,
+at `42ec6a4`, which is on `origin/main`, with uncommitted changes to `.github/workflows/ci.yml`,
+`.omp/commands/build-loop.md` and `AGENTS.md`: not clean, so not a removal candidate). The branches `loop/iter-4` to `-13`
+remain, not deleted.
