@@ -560,7 +560,7 @@ fn fit_leaves(skeleton: &mut Skeleton, foliage: &crate::params::FoliageParams) {
     let mut total = 0usize;
     let mut keep = skeleton.nodes.len();
     for (i, node) in skeleton.nodes.iter().enumerate() {
-        total = total.saturating_add(leaf_bound(foliage, node.length, node.height_ratio));
+        total = total.saturating_add(leaf_bound(foliage, node.kind, node.length, node.height_ratio));
         if total > MAX_LEAVES {
             keep = i.max(1);
             break;
