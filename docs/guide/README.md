@@ -7,7 +7,7 @@ what you are building.
 |---|---|
 | [Getting started](getting-started.md) | The crate's features, how to add it, what the plugin does on its own, presets by name, and `build_tree` without the plugin at all. |
 | [Growing a tree over time](growing.md) | `TreeAge` and `Growing`, `TreeParams::mature_at`, trees from `.tree.ron` files, `GpuGrowth`, `BuildInBackground` and `TreeLod`. |
-| [Forests](forests.md) | `TreePool` and `PooledTree`, `BackgroundPools`, `PoolColors`, `Scatter`, `FloraGround`, `FloraUnits` and `PooledDeadfall`. |
+| [Forests](forests.md) | `TreePool` and `PooledTree`, `BackgroundPools`, `PoolColors`, `Scatter` and `PointGrid`, `FloraGround`, `FloraUnits` and `PooledDeadfall`. |
 | [Bark, leaves, wind and looks](appearance.md) | `FloraWind` and gusts, `BarkParams`, `LeafScan` and grown veins, `RenderStyle`, and the low-poly `CrownStyle::Hull` and `TrunkStyle::Prism`. |
 | [Seasons and weather](seasons.md) | `FloraSeason` (autumn, leaf fall, snow, blossom), its fruit, and `FloraWetness` for rain. |
 | [Trees a game touches](interaction.md) | `TreeShakes`, `DropLeaves`, `TreeFruit`, `TreeNotch` and `FellTree`, `BuckTree`, `FloraFire` and `FoliagePusher`. |

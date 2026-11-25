@@ -110,8 +110,10 @@
 //!
 //! [`Scatter`] says where the trees of a forest stand: trunks at least a spacing apart and
 //! otherwise irregular (Poisson-disc sampling), species in groves with bending borders, every
-//! tree its own yaw, size and variant, and a density per spot for clearings and roads. It is
-//! pure CPU and deterministic per seed; see [`scatter`].
+//! tree its own yaw, size and variant, and a density per spot for clearings and roads. A second
+//! layer (undergrowth, deadfall, a brush stroke over a painted forest) keeps clear of what already
+//! stands by asking a [`PointGrid`] from that density. It is pure CPU and deterministic per seed;
+//! see [`scatter`].
 //!
 //! On terrain, [`FloraGround`] is the height of your ground: [`ScatterPoint::transform_on`] (or
 //! [`FloraGround::footing`] with [`TreeParams::base_radius`]) stands a tree where its trunk meets
@@ -491,7 +493,7 @@ pub use pool::{
 pub use recolor::{FromPool, RecolorTree};
 pub use presets::{TreePreset, UnknownPreset};
 pub use rng::SeededRng;
-pub use scatter::{Scatter, ScatterPoint, poisson_disc};
+pub use scatter::{PointGrid, Scatter, ScatterPoint, poisson_disc};
 pub use see_through::SeeThroughTrees;
 pub use shadows::FloraShadows;
 pub use push::{FoliagePusher, MAX_PUSHERS};
@@ -523,7 +525,7 @@ pub mod prelude {
         GpuGrowth, Growing, GustFront,
         LeafBurst, LeafScan, LodDistances, LodScale, LodSettings, PoolColors, PooledLook, PooledTree, ProceduralTree,
         ProceduralTreeAsset, RecolorPool, RecolorTree, RenderStyle, CrownStyle, TrunkStyle,
-        Scatter, ScatterPoint, SeeThroughTrees, TreeAge, TreeBucked, TreeCondition, TreeGenerated, TreeLanded, TreeLod, TreeLog,
+        PointGrid, Scatter, ScatterPoint, SeeThroughTrees, TreeAge, TreeBucked, TreeCondition, TreeGenerated, TreeLanded, TreeLod, TreeLog,
         ConditionGlide,
         TreeMature, TreeNotch, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes, TreeShape, TreeStump,
         WindResponse, WoodCapsule, build_pool,
