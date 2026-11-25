@@ -173,6 +173,17 @@ rather than bunched at its base, and its leaf `i` keeps its place on the grown s
 `distributed_leaf_count` leaves show, as `GpuGrowth` shows them). The pipe model leaves a strand its own
 radius, and its floor check keeps wood `pipe_radius_min` above the floor when it is on.
 
+A strand's leaves are the foliage's, with three numbers of their own (`FoliageParams::strand_density`,
+`strand_size`, `strand_angle`; `docs/research/strand-leaves.md`): the rate is `density * strand_density` a metre
+(`foliage::leaf_rate`, read by the mesher, `fit_leaves`' leaf budget and `GpuGrowth`'s `leaf_count` through
+`distributed_leaf_amount(foliage, kind, ..)`), the size `leaf_size * strand_size`, and under `AllBranches` the leaf
+in slot `j` points `strand_angle` degrees out of line with its rope, `j` golden angles round it
+(`strand_leaf_direction`: a function of the slot, so the leaf keeps its direction as the strand grows). The leaf
+is cut as a four-point lance (`LeafPoint::strand`, `Lance`: the scan's outline reduced to its base, tip and widest
+points, with its atlas coordinates; the procedural leaf's four corners without a scan), 8 vertices and 4
+triangles for both sides where a scanned card has 20 and 16; the flag rides through `coarse_leaves`, so the
+levels of detail keep the curtain.
+
 Each primary's tube and collar get a `root_segment` reaching into the trunk
 (`primary_root`); a branch hugging the trunk (less than half of its direction
 pointing away from it) gets a closed, rounded `root_dome` instead, since a long
