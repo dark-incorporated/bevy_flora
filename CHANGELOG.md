@@ -7,9 +7,25 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
-A change of `TreeCondition` can be drawn as a decline over seconds (`docs/research/condition-glide.md`), a leaf that appears on a growing branch grows from nothing instead of popping in (`docs/research/leaf-ease-in.md`), and a preset is found by its name and a tree says when it is grown, what an editor and a game each wrote for themselves (`docs/research/preset-names.md`), and a tree is built from any parameters at all, in bounded time and memory, whatever a `.tree.ron` file or an editor's number field held (`docs/research/hostile-parameters.md`).
+A change of `TreeCondition` can be drawn as a decline over seconds (`docs/research/condition-glide.md`), a leaf that appears on a growing branch grows from nothing instead of popping in (`docs/research/leaf-ease-in.md`), and a preset is found by its name and a tree says when it is grown, what an editor and a game each wrote for themselves (`docs/research/preset-names.md`), and a tree is built from any parameters at all, in bounded time and memory, whatever a `.tree.ron` file or an editor's number field held (`docs/research/hostile-parameters.md`), and a tree file may be a `.tree.yaml`, the file the Grimoire editor saves a species in (`docs/research/tree-yaml.md`, issue #95).
 
 ### Added
+
+- **`.tree.yaml` files: the `yaml` feature, `TreeParamsYamlLoader`, `TreeParams::to_yaml` and `from_yaml`**
+  (`docs/research/tree-yaml.md`, issue #95, `consumer:bevy_dark_factory`). The Grimoire editor moved every project
+  file from RON to YAML and writes a species as `trees/<name>.tree.yaml` through this crate's serde derives, which a
+  game could not load. `asset_server.load("trees/oak.tree.yaml")` is now a `Handle<TreeParams>` (registered by the
+  plugin beside the RON loader) that `ProceduralTreeAsset` draws, that every tree sharing it follows, and that
+  rebuilds when the file is saved (with `file_watcher`); `TreeParams::to_yaml()` and `TreeParams::from_yaml(&str)`
+  write and read the same text for code that holds it. The text is exactly `serde_yaml_ng::to_string` of the type
+  (`serde_yaml_ng` 0.10, the editor's own version, so one copy resolves), so a file either side wrote reads on the
+  other: a crown or trunk style that carries fields is a YAML tag (`crown: !Hull {tiers: 5, ...}`), floats are the
+  shortest text that reads back as the same `f32`, a field left out takes its default and a misspelt one is an error
+  with its line and the fields that exist. The feature is independent of `ron`: a game that reads YAML compiles no
+  RON. `TreeFileError` is now the error of both formats and is exported under either feature (it was under `ron`
+  only); `TreeParamsLoader` and the RON functions are unchanged. `examples/assets/trees/maple.tree.yaml` is the
+  example's tree in YAML, and `tree_file` takes `--tree <path>.tree.yaml` and `--export <preset> --yaml`. CI builds
+  `--features yaml` and `--features ron` on their own.
 
 - **`ConditionGlide { seconds }`: a change of `TreeCondition` can be drawn as a decline** over seconds, not
   in the frame after it is set (`docs/research/condition-glide.md`, backlog 2 of iterations 6 to 9). A
@@ -148,6 +164,18 @@ A change of `TreeCondition` can be drawn as a decline over seconds (`docs/resear
 
 ### Tests
 
+- `tree_asset.rs` (`yaml`): `every_preset_survives_a_yaml_tree_file` (all 20 presets, `from_yaml(to_yaml(p)) == p`),
+  `a_hull_crown_and_a_prism_trunk_survive_a_yaml_tree_file_as_tags_and_a_file_may_leave_them_out`,
+  `a_yaml_tree_file_may_leave_fields_out_but_not_misspell_them` (the error names the field and `line 3`),
+  `a_yaml_tree_file_is_read_as_the_generator_can_draw_it` (`.nan` and `1e9` read as written, held in range by
+  `sanitized()`), `text_that_is_not_a_tree_is_an_error_at_once` (an alias bomb, 10 000 levels of nesting, two
+  documents, a sequence for a struct, a NUL and a list, in under two seconds together),
+  `an_empty_yaml_file_is_not_a_default_tree` (nothing, whitespace, a comment, `null`, `~`, `---`; `{}` is the
+  defaults), `a_tree_is_the_same_tree_in_yaml_and_in_ron` (every preset through both formats, and the two example
+  files), `the_example_yaml_tree_file_loads`, and
+  `the_asset_server_loads_a_tree_yaml_file_and_says_where_a_bad_one_is_wrong` (a real `AssetServer` over a
+  temporary folder: a `.tree.yaml` becomes the preset it was written from and the `ProceduralTreeAsset` tree
+  follows it, a misspelt one fails with its field and line, and a `.tree.ron` loads in the same app).
 - `limits.rs`: `every_preset_and_the_default_are_inside_every_range` (and says which fields if one is not),
   `every_numeric_field_is_limited` (all 107 numeric fields found by reflection, so a field added later is
   covered, each at `NaN`, both infinities and `±1e30`: finite and inside any range afterwards),

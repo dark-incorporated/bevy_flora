@@ -121,7 +121,7 @@ fn blight(mut commands: Commands, index: Res<FloraIndex>) {
 
 A tree is its parameters and its seed, so a save holds what the game did to it:
 
-- **The tree.** Its `TreeParams` (with the `serde` feature they serialize; `ron` writes `.tree.ron` files) or its preset and seed, its `Transform` and its `TreeAge`.
+- **The tree.** Its `TreeParams` (with the `serde` feature they serialize; `ron` writes `.tree.ron` files and `yaml` `.tree.yaml` files) or its preset and seed, its `Transform` and its `TreeAge`.
 - **A notch.** `TreeNotch` is plain values; inserted again, it is carved again.
 - **A felled tree.** How it was felled: on load, `FellTree { direction, lying: true, .. }` lays it down at once where it came to rest, with its stump and cut faces and no landing (no `TreeLanded`, no shake, no leaves shed). `BuckTree` then cuts it into logs as soon as it lies.
 - **Picked fruit.** `TreeFruit::picked()` gives the keys; on load, spawn the tree with `TreeFruit::with_picked(keys)` and the same fruit stay off it.

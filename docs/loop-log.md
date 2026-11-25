@@ -1193,3 +1193,105 @@ binaries), 22 GB after. Kept: the target directory's dependency builds (71 GB, o
 earlier passes: none found (no `f*_base` in `~` or `/tmp`); the branches `loop/iter-1` to `-11` remain on origin, not
 deleted. Process slip, not repeated: one edit to `qa/visual_findings.md` (a column of its last line) was made with a
 short `python3` script instead of `edit`.
+
+## Iteration 13 — 2026-11-25 — A `.tree.yaml` is a tree: the `yaml` feature, `TreeParamsYamlLoader`, `to_yaml`, `from_yaml` (#95)
+
+Pass on `loop/iter-13` from `main` `42ec6a4`, Apple M5 (Metal; no `gpu-tenant` on this Mac). **No log entry exists for
+iteration 12** (the hostile-parameters pass, commits `213486a` to `8637dee`, and `b2b0160`, the nextest note): its notes
+are `docs/research/hostile-parameters.md` and the commits. This entry is 13 because `loop/iter-12` is taken.
+Home-still at the start: `system_status` healthy (19 543 documents, 19 387 embedded), `scribe_health` ok
+(`0.0.1-rc.393`, RTX 3090), `distill_search` worked; `catalog_recent` (200 rows, 2026-11-17 to 2026-11-20) held no tree,
+plant, foliage, L-system, phenology, fire, impostor, wind or felling document that `corpus.md` lacked. One stem the note
+uses (`10.1109_38.736469`, Lintermann and Deussen 1999) was added with the two web sources (`Research: corpus`).
+
+**Triage.** `gh issue list` on `bevy-coven/bevy_flora`: one open issue, **#95 "A YAML loader for TreeParams
+(.tree.yaml)"**, labels `enhancement`, `consumer`, `consumer:bevy_dark_factory`, opened 2026-11-11: no bug is open, so a
+`consumer` issue is the pass's item (section 3). `wiggum/parked-pass-9-20261102-054127` is the 160-line `zz_probe.rs` that
+iteration 12 already adopted: stale, ignored. `git log` since iteration 11: iteration 12's commits only. Read the
+requester (not built, not run): `bevy_dark_factory`'s `ops_tree.rs` and `forest_view.rs` read a `TreeParams` through
+`blueprint_model::yaml` (`serde_yaml_ng::to_string` / `Deserializer::from_str`, `serde_yaml_ng = "0.10"`), pin this crate
+at `25e956b` with `features = ["serde"]`, and write `trees/<name>.tree.yaml` atomically.
+
+**What changed.** Behind a new feature `yaml` (`serde` + `serde_yaml_ng 0.10`, independent of `ron`): `TreeParamsYamlLoader`
+(an `AssetLoader` for `tree.yaml`, registered by the plugin beside the RON one), `TreeParams::to_yaml()` (exactly
+`serde_yaml_ng::to_string`, so the text equals the editor's, a crown or trunk style with fields a `!Hull` tag) and
+`TreeParams::from_yaml(&str)`; `TreeFileError` is now the error of both formats and exported under either feature; one
+`read_text` serves both loaders; `examples/assets/trees/maple.tree.yaml`; `tree_file` takes a `.tree.yaml` and
+`--export <preset> --yaml`; CI builds `--features yaml` and `--features ron` alone. Nothing that draws a tree changed.
+Runner-up: none filed; the backlog's "glide with no per-tree cost" (iteration 11, item 2) waits.
+
+**Assumed decisions** (owner may override; recorded on #95): the feature is `yaml` and the loader `TreeParamsYamlLoader`
+(renaming `TreeParamsLoader` would break `ron` users); one extension, `.tree.yaml`; **an empty file is an error, not a tree
+of all defaults** (found by the first test run: `serde_yaml_ng` reads `""` as the defaults because every struct has
+`serde(default)`; a watcher can read a file between a non-atomic editor's truncate and write, and the tree on screen must
+not flash to the defaults; `{}` is the all-defaults tree); the example keeps `required-features = ["ron"]` (Cargo has no OR)
+and reads a YAML tree when `yaml` is on too.
+
+**Sources.** Model: Lintermann and Deussen 1999, "Interactive Modeling of Plants" (`10.1109_38.736469`: "The user edits a
+plant type's parameters and runs the simulation to produce the desired geometry", "models can easily be reused and changed").
+Shipping game: Unity's "Format of text serialized files" (assets are a subset of YAML, floats written losslessly) and Epic's
+Procedural Vegetation Editor ("Save Grower Preset ... written to a data asset that can be loaded"), both web. Technical:
+`serde_yaml_ng` 0.10.0's crate page and source (`de.rs`, `ser.rs`), Bevy's `AssetLoader`. Note: `docs/research/tree-yaml.md`.
+Measured to settle a conflict between sources: the crate page says "only support the YAML Specification 1.1", the editor's
+`Cargo.toml` says 1.2; for a typed `bool` it accepts `true`/`false`/`True`/`False` and refuses `yes`, `no`, `on`, `1`.
+Pending index: the three web pages.
+
+**Numbers** (`/tmp/f13`, removed with the scratch).
+
+- Tests: `cargo nextest run --all-features` 379 passed (378 at the first full run; the 379th,
+  `saving_a_tree_yaml_file_rebuilds_its_trees_and_a_save_that_does_not_read_leaves_them`, was added afterwards and passed
+  with the other 15 `tree_asset` tests; the new tests are listed in the CHANGELOG). At the first full run, on the tree
+  before that test: `cargo test --all-features --doc` clean, `cargo doc --no-deps --all-features` with `-D warnings`
+  clean, `cargo build`, `--features serde`, `--features yaml`, `--features ron` and `--release` clean, `cargo build
+  --examples` with and without `--all-features` clean, `cargo package --locked` (135 files) clean, clippy
+  `--all-targets --all-features -D warnings` clean; clippy was run again on the final tree (below). The first test run
+  found the empty-file behaviour above; the research note records every behaviour it measured (alias bomb and 10 000-level
+  nesting are `invalid type: sequence, expected struct TrunkParams at line 1 column 8`, not the parser's own limits;
+  singleton-map enums refused; two documents refused). The reload test drives `AssetServer::reload` over a temporary
+  folder: a new save is followed by two trees, a typo and an empty save both end in `LoadState::Failed` with the trees as
+  they were, and the next good save is followed again.
+- End to end: `tree_file --tree trees/maple.tree.yaml --screenshot` loads through the real asset server and draws the maple
+  (`/tmp/f13/after/tree_yaml.png`, read: HUD "loaded, built 1 time(s)"); against `maple.tree.ron` below the HUD the
+  difference is 0.07 of 255 on average, against 0.69 between two runs of the RON file (the example's clock and wind are not
+  deterministic), so the two loaders draw one tree; a file with `hieght` logs the field, the fields that exist and the line.
+- Gallery, the 7 scenarios of CI's GPU job (no tree-building file changed, so not the 526), base and new, CPU and `--gpu`,
+  Apple M5: 7 PNG = 7 rows in each of 5 runs, none under 100 KB, flags `-` x 7, no `BLANK_CAPTURE`/`CAPTURE_TIMEOUT`, only
+  the known `WARN`s (no `assets` folder, winit `Destroyed`); every PNG byte for byte the main binary's (CPU and GPU), run 2
+  equals run 1, `stats.tsv` columns 1-10 identical in all five; `compare_gallery` 0.218 mean of means, worst 0.922, as base.
+- Forest bench, this host at load 14 to 46 (other loops build on it), so a 5% gate is not readable: the same binary spanned
+  6.2 to 11.4 ms median in six runs. Pool 10 000, ABBA interleaved, 6 + 6, medians of six, base -> new: mean 8.12 -> 8.22
+  ms/frame (+1.2%), median 8.07 -> 7.93 (-1.7%), p95 10.71 -> 11.95, cpu 20.55 -> 20.48 (-0.3%); the quieter last four runs:
+  base 6.75, 6.20 against new 6.59, 6.37. gpu-live 1 000, one pair: base 437 (median 386) against new 308 (262) ms/frame, the
+  spread of one binary at this load. naive 1 000 was not run in this pass (5 min a run and unreadable at this load); no code
+  of those paths changed: the diff to `src/` is `tree_asset.rs` (yaml-gated) and the `lib.rs` exports.
+- Clips: all eleven re-recorded for 0.47.1 (`AGENTS.md` recipe, `/tmp/f13/clips.sh`, `encode.sh`): 8 are byte for byte the
+  committed files (`seasons`, `shake`, `fell`, `fire`, `push`, `chop`, `harvest`, `playground`), `growth` (4 956 083 ->
+  4 963 997 B) and `grove` (6 040 984 -> 6 062 838) changed because growing trees changed with iteration 9's leaf ease, and
+  `isometric` by 78 bytes of 7.0 MB (not investigated). `ffprobe`: sizes and frame counts as before (480x360 24 fps 192;
+  560x315 20 fps 160; 560x315 16 fps 128). First, middle and last frame of the three changed ones read.
+
+**Critique and verdict** (`/tmp/f13/critique.md`): **GREAT** for what it promises (the loader, the two functions, a
+feature that does not pull RON, the editor's text read as written). Flaws, none stopping a ship: `to_yaml` has an `expect`
+like `to_ron` (cannot fail for this type; round-trips of every preset and of `NaN`/`inf` are tested); an empty file is
+refused but a file cut at a line is not (block YAML stays valid), so non-atomic writers can still flash a part-tree (the
+Cauldron writes atomically; the guide says write-then-rename); `unsafe-libyaml` joins the tree under `yaml` (opt-in, the
+editor's choice); the example needs `ron`; the shipped maple YAML is the older RON export, not `TreePreset::Maple.params()`;
+no visual change, so no clip shows it; the forest bench is noise-limited; hot reload through the real `file_watcher` was not
+run with a window, only through `AssetServer::reload` (the watcher calls it).
+
+**Commits** (`loop/iter-13`): `54d56a7` Research: corpus, `e9cd554` Research: .tree.yaml, `3968d75` the implementation,
+`164c9ac` docs. Sibling repositories: none touched; #95's requester (`bevy_dark_factory#365`) moves its pin to a `main`
+commit that contains this.
+
+### Ranked backlog after iteration 13
+
+1. **A glide with no per-tree cost** (iteration 11's item 2): a leaf marker so only leaf meshes are tagged, or a shared
+   slot in the buffer for trees that began together; and the leaves a glide loses falling (`LeafBurst`).
+2. **The hull crown by leaf size**: `crown_hull` takes positions only, so a `CrownStyle::Hull` tree growing on the CPU
+   still pops its hull when a leaf is born.
+3. **Finish the willow (D-052)**: leaf ribbons, strands kept as lines at level 1, limbs whose leaves reach their tips, a
+   greener strand colour, a forked trunk; D-074 / D-075 on big; `RadialOutward` facing on a growing branch.
+4. **What an editor still hand-rolls around `TreeParams`** now that it writes `.tree.yaml`: per-field kind, unit and range
+   for a panel (the ranges are in `limits.rs`) and a dotted-path edit; wait for the requester to file it. Also Sanctuary's
+   rain-and-fire rule (`douse_forest`): only a hook if two consumers want the same rule.
+5. **A YAML-only `tree_file`** (it requires `ron` today) and a shipped `maple.tree.yaml` that is `TreePreset::Maple.params()`.
