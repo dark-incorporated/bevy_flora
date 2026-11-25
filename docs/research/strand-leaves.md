@@ -75,30 +75,37 @@ the fortieth leaf of a rope.
 
 ## Model adopted
 
-A strand's leaves differ from a branch's in three ways, all of them in `FoliageParams` (the leaf code reads
+A strand's leaves differ from a branch's in four ways, all of them in `FoliageParams` (the leaf code reads
 no other struct, so `leaf_points_for_node` keeps its signature):
 
 1. **Their own rate**: `strand_density`, a share of `density` (1 = as every branch, the default), so a strand
    of length `l` bears `density * strand_density * l * height_modifier` leaves under `AllBranches` (the budget
-   in `fit_leaves`, `leaf_bound`, and the GPU's `leaf_count` take the same number: one function, `leaf_amount`).
+   in `fit_leaves`, `leaf_bound`, and the GPU's `leaf_count` take the same number: one function, `leaf_rate`).
 2. **Their own size**: `strand_size`, a share of `leaf_size` (1 default). A row of many leaves is a row of
    small ones; the willow's leaf is 0.34 m on a 5 m tree because one leaf stood for a tuft.
-3. **A cheaper card**: a strand leaf is cut as a four-point lance, the base, the tip and the two widest points
-   of the scan's own outline (the nearest of the outline's points to those extremes), with the scan's atlas
-   coordinates, so it wears the same texture; without a scan, the procedural leaf's four corners. Both sides,
-   as every card: 8 vertices and 4 triangles, a quarter of the scanned card's. The flag is
-   `LeafPoint::strand`, set where the point is made, and it survives the coarse levels (`coarse_leaves` copies
-   the point).
+3. **Their own direction**: `strand_angle`, degrees out of line with the rope (0, the default, is the old
+   behaviour: every leaf hangs along it), to the side that the slot's turn round the rope says, the golden
+   angle from the leaf before (spiral phyllotaxis, Mirabet et al.). This is what makes a rope a ribbon: a
+   leaf hanging along its rope covers a leaf's width of a curtain whose ropes are half a metre apart (the
+   probe below: 2.6 times the leaves on the strands moved the lower third's coverage from 0.335 to 0.336),
+   one leaving it at 45 degrees covers a leaf's length times the sine of that on each side.
+4. **A cheaper card**: a strand leaf is cut as a four-point lance, the base, the tip and the two widest points
+   of the scan's own outline, with the scan's atlas coordinates, so it wears the same texture; without a scan,
+   the procedural leaf's four corners. Both sides, as every card: 8 vertices and 4 triangles, a quarter of the
+   scanned card's. The flag is `LeafPoint::strand`, set where the point is made, and it survives the coarse
+   levels (`coarse_leaves` copies the point).
 
-Leaf `i` of a strand keeps its place as the strand grows (`leaf-places.md`: slot, rank, flush) and the
-shaders and `GpuGrowth` already take whatever number of vertices a leaf has (`firsts`), so neither changes.
+Leaf `i` of a strand keeps its place as the strand grows (`leaf-places.md`: slot, rank, flush), its direction is
+a function of its slot, and the shaders and `GpuGrowth` already take whatever number of vertices a leaf has
+(`firsts`), so neither changes.
 
 ## Parameters
 
 | Field | Default | Willow | Range | Meaning |
 |---|---|---|---|---|
-| `foliage.strand_density` | 1.0 | to be set against the targets | 0 to 16 | share of `density` a strand's leaves have |
-| `foliage.strand_size` | 1.0 | to be set against the targets | 0 to 8 | share of `leaf_size` a strand's leaves have |
+| `foliage.strand_density` | 1.0 | 1.4 | 0 to 16 | share of `density` a strand's leaves have |
+| `foliage.strand_size` | 1.0 | 0.9 | 0 to 8 | share of `leaf_size` a strand's leaves have |
+| `foliage.strand_angle` | 0.0 | 45.0 | 0 to 90 | degrees a strand's leaves point out of line with it |
 
 ## Validation targets
 
@@ -106,9 +113,9 @@ shaders and `GpuGrowth` already take whatever number of vertices a leaf has (`fi
    `stats.tsv` columns 1-10 (a strand leaf flag is the only new state, and it is false there).
 2. **Coverage, measured independently of the generator** (a throwaway probe rasterises every triangle of the
    willow's meshes on a 256 x 256 grid over the lower third of the crown's box, from the front and the side,
-   and counts the cells a triangle covers): the lower third of the mature willow is covered over at least half
-   of its area from both views at level 0, and the same, within 10 points, at levels 1 and 2 (the coarse
-   levels keep every third and every eighth leaf but scale them up). Baseline in 0.47.1 (mature willow, seed 42,
+   and counts the cells a triangle covers): the lower third of the mature willow is covered over at least 0.45
+   of its area from both views at level 0 (1.4 times the baseline below), and the same, within 10 points, at
+   levels 1 and 2 (the coarse levels keep every third and every eighth leaf but scale them up). Baseline in 0.47.1 (mature willow, seed 42,
    the crown's box 8.9 x 5.2 x 10.8 m, `examples/zz_probe.rs`, deleted before the commit): lower third covered
    0.335 from the front and 0.271 from the side at level 0, 0.285 and 0.234 at level 1, 0.302 and 0.228 at
    level 2; the middle third 0.406 and 0.365 at level 0. A fence: two thirds of the curtain is open sky.
@@ -119,8 +126,50 @@ shaders and `GpuGrowth` already take whatever number of vertices a leaf has (`fi
    the seven-scenario set), no mesh flag, leaves of a strand are born where they were.
 5. Same seed, same tree; a strand leaf never changes shape or place with age (the existing tests for leaf
    places and shapes, extended to strand leaves).
-6. Cost: `build_tree` of the willow (11.7 ms mature in 0.47.1, one core) is quoted; every other preset's build
-   probe within 5 percent; the forest bench's three modes within 5 percent (no willow in them).
+6. Cost: `build_tree` of the willow (4.7 ms mature in 0.47.1, one core) is quoted; every other preset's build
+   probe within 5 percent; the forest bench's modes within 5 percent (no willow in them).
+
+## Measured (iteration 16)
+
+The coverage probe (`examples/zz_probe.rs`, deleted; mature willow, seed 42, lower third of the crown, front / side,
+level 0) over the design space, before the rate was capped:
+
+| density x, size x, angle | leaves on strands | covered |
+|---|---|---|
+| 1, 1, 0 (0.47.1) | 3 212 | 0.335 / 0.271 |
+| 2.5, 0.7, 0 | 8 304 | 0.336 / 0.269 |
+| 5, 0.55, 0 | 16 799 | 0.355 / 0.280 |
+| 1, 1.0, 40 | 3 212 | 0.551 / 0.468 |
+| 1.5, 0.9, 40 | 4 915 | 0.582 / 0.505 |
+| 3, 0.65, 35 | 10 008 | 0.576 / 0.497 |
+| 3, 0.65, 50 | 10 008 | 0.626 / 0.543 |
+| 1.4, 0.9, 45 (adopted) | 4 559 | 0.585 / 0.509 |
+
+More strands (2.4 a metre for 592 of them, leaves per strand cut to match) gave the same 0.59 / 0.53 with 4 400 more
+vertices of wood, so the strand count stays 1.6 a metre.
+
+The adopted willow against the targets: (1) 502 of the 526 gallery scenarios have the same `stats.tsv` columns 1-10, the
+changed ones are the 27 willow scenarios and the oak's three with leaves on strands; (2) 0.585 / 0.509 against the
+0.45 asked, 0.562 / 0.485 at level 1 and 0.552 / 0.475 at level 2 (within 4 points of level 0); (3) the mature willow
+has 5 977 leaves where it had 4 630, in 40 924 triangles where it had 74 080, and `leaf_bound` is under half of
+`MAX_LEAVES`; (4) **not met**: `compare_gallery` on `age_willow_6` is 1.043 where it was 0.922 (the seven's mean of
+means 0.235 where it was 0.218, the other six images identical to the digit), and over the 36 willow scenarios the worst
+is 1.350 (`age_willow_8`) where it was 1.162 (`grow_willow_7`): the GPU's leaves take their normals and crown shading
+from the mature tree (`src/gpu/mod.rs`, "What differs from the CPU path") and the lower crown's leaves now cover 1.75
+times the area that difference shows on, with no difference in where a leaf is (`grown_leaves_and_flowers_match_the_cpu_meshers`
+passes); (5) the existing leaf-place and shape tests pass and a strand leaf's direction is a function of its slot;
+(6) `build_tree` of the willow 4.4 ms where it was 4.7 (the least of six runs of the best of five, back to back, on a
+machine loaded by other loops; an earlier reading of 11.7 against 5.0 was the load, not the change, and is withdrawn), every
+other preset's meshes bit-identical and their build time at a median ratio of 1.00 (none over 1.06).
+
+The forest bench (`forest --offscreen --deterministic --mode pool`, 10 000 oaks, 11 alternating runs of each binary on a
+machine other loops were using, load 2 to 29): ms/frame median 8.27 before, 8.45 after (+2.2%); the frame median 8.66
+and 8.71 (+0.6%); p95 10.66 and 10.97 (+2.9%); cpu ms/frame 25.68 and 27.67 (+7.7%, with single runs from 15 to 29 in
+either binary and the three quietest pairs at -7%, +1% and -1%). A pool of oaks runs no code this change reaches (an oak
+has no strand, its meshes are bit-identical), so the spread is the machine's. `naive --trees 1000`: 40.4 and 40.9 ms before, 40.4
+ms after (a second after-run, 45.9, overlapped a build probe of mine and is discarded; a later run of three alternating
+pairs was destroyed by load 16 to 29 and is not quoted). `gpu-live` printed nothing within 150 s in either binary on this
+host and was not measured.
 
 ## What great looks like
 
@@ -132,14 +181,20 @@ the rope itself is nearly hidden; the leaf is a clean lance, not a blob.
 
 ## Deviations
 
-- `strand_density` and `strand_size` and the willow's values are design defaults (`qa/visual_findings.md`,
-  `## Proposed`, D-052): no source gives a leaf spacing for the species, and the leaf is larger than the
-  species' because the tree is smaller (a 5 m willow stands for one of 12 to 20 m: `Orwa et al.` "to 20 m
-  tall").
+- `strand_density`, `strand_size`, `strand_angle` and the willow's values (1.4, 0.9, 45) are design defaults
+  (`qa/visual_findings.md`, D-081): no source gives a leaf spacing or a leaf angle for the species (the angle is
+  what a willow's alternate, outward-pointing leaves look like, not a measurement), and the leaf is larger than
+  the species' because the tree is smaller (a 5 m willow stands for one of 12 to 20 m: Orwa et al. "to 20 m tall").
+- The rate is **1.4, not the 3 the first design had**: at 3 the protected growth test
+  `a_leaf_that_appears_grows_from_nothing` failed (a leaf from 0.28 to 0.59 of its size in one 0.01-year step),
+  because a leaf eases in over the growth of branch the next one takes and a denser strand flushes quicker; the
+  assertion stands. The rate was not what made the curtain: 2.6 times the leaves in line with the ropes moved the
+  cover from 0.335 to 0.336, and the same count of leaves turned 40 degrees reached 0.55 (below).
 - The scan's leaf is wider than the species' (aspect 0.25 against 0.03 to 0.17), kept so a card still reads
   at 30 m; the lance is as wide as the scan at its widest.
 - A strand leaf has no scanned serration or taper; at 4 triangles it is a diamond, and at the distances where a
-  strand's leaf is a few pixels wide (over 5 m) the outline of a 16-triangle leaf is below what shows.
+  strand's leaf is a few pixels wide (over 5 m) the outline of a 16-triangle leaf is below what shows. At under
+  2 m, inside the crown, the diamond shows (the junction close-up of `mature_willow`).
 
 ## Pending index
 

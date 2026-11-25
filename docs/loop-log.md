@@ -1607,3 +1607,139 @@ Leftovers of earlier passes, listed and not touched: the worktree
 `/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at `42ec6a4`,
 with uncommitted changes to `.github/workflows/ci.yml`, `.omp/commands/build-loop.md` and `AGENTS.md`: not clean, so not a removal
 candidate), `wiggum/parked-pass-9-20261102-054127` (stale, above), and the branches `loop/iter-4` to `-15` (not deleted).
+
+## Iteration 16 — 2026-11-25 — The willow's curtain reads as leaves, not wires: a strand's leaves have a rate, a size and an angle of their own and are cut as lances (D-052)
+
+**Preflight.** `gh issue list --repo bevy-coven/bevy_flora --state open` returned an empty list (exit 0), so no bug, no `consumer`
+and no enhancement issue was open; the owner's editor issue (`bevy-coven/bevy_grimoire#102`, F6) is closed and what it still
+owes (the clip) is the editor's. `git branch --list 'wiggum/parked-*'` shows only `wiggum/parked-pass-9-20261102-054127`, whose
+`A tree from any TreeParams` commit is on `main` long since: stale, ignored. HomeStill was up (`system_status`: scribe x2, distill,
+Qdrant, 19 543 documents); the corpus has no willow shoot-morphometry paper (searched; web search gave only the species'
+leaf size), recorded under the note's `Pending index`. Host: Apple M5 (Metal), shared with other loops, load 2 to 73 during
+the runs; `df` 23 GB free at the start, 8.5 GB at the lowest (two 526-scenario galleries, the binaries, the debug and release
+builds): clean-up below.
+
+**What changed and why it ranked first.** The ranked list had no filed issue, so the pick came from the backlog and a look at
+the images. D-052 (the willow) is the oldest taste item open, and `mature_willow` at 8 to 18 m still read as a fence of pale
+wires with a leaf now and then and the sky behind it (the iteration-7 note said so and left the strands' leaves to a later
+pass); from 30 m, level 1 (which drops the rope) read as a low bush on a pole. An independent rasteriser (a probe that rasterises
+every triangle of the willow's meshes on a 256 x 256 grid over the lower third of the crown) put the number on it: 0.335 of
+the lower third covered from the front and 0.271 from the side. The generator change is in `FoliageParams` (the leaf code reads
+no other struct): **`strand_density`** (a share of `density`, default 1), **`strand_size`** (a share of `leaf_size`, default 1)
+and **`strand_angle`** (degrees out of line with the rope, default 0; a leaf in slot `j` turns `j` golden angles round the rope,
+spiral phyllotaxis, a function of the slot so it keeps its direction as the strand grows), and **every leaf of a strand is a
+four-point lance** (`LeafPoint::strand`, `Lance`: the scan's outline reduced to its base, tip and two widest points with the
+scan's own atlas coordinates, the procedural leaf's four corners without a scan): 8 vertices and 4 triangles for both sides
+where a scanned card has 20 and 16, and the flag rides through `coarse_leaves` so levels 1 and 2 keep the curtain. The rate goes
+through one function (`leaf_rate`) that the mesher, `fit_leaves`' leaf budget and `GpuGrowth`'s `leaf_count` all read
+(`distributed_leaf_amount`, `distributed_leaf_count` and `leaf_bound` take the node's kind). The willow sets 1.4, 0.9 and 45.
+Candidates, ranked: (1) this; (2) a glide with no per-tree cost (iteration 11, 13, 14 and 15's item, no consumer asks); (3) a
+slider range and label per `ParamField` (no consumer asks); (4) `PointGrid::nearest`, only when a consumer asks; (5) the hull
+crown by leaf size. (1) beat (2) to (5) because it is a visible defect in a shipped preset that the crate's own note called
+"not a tree to ship at 9 to 15 m", and none of the others has a consumer asking.
+
+**The first draft was wrong, and the measurement said so.** The design in the note was "a higher rate of smaller leaves, cut
+cheaper": 2.6 times the leaves in line with the ropes moved the cover from 0.335 to **0.336**; 5 times at 0.55 of their size
+reached 0.355. A leaf hanging along its rope covers a leaf's width of a curtain whose ropes are half a metre apart, however many
+there are. Turning the leaves out of the rope's line did it: the same 3 212 leaves at 40 degrees covered 0.551 / 0.468. Then
+the rate was capped by a protected test: at 3 times with 35 degrees (cover 0.576), `a_leaf_that_appears_grows_from_nothing`
+failed (a leaf from 0.28 to 0.59 of its size in one 0.01-year step, because a leaf eases in over the growth of rope the next one
+takes and a denser strand flushes quicker). The assertion stands; the willow keeps **1.4 times, 0.9 and 45 degrees**
+(0.585 / 0.509). An envelope sweep and its table are in the note. A strand-count sweep (2.4 strands a metre instead of 1.6)
+gave the same cover with 4 400 more wood vertices and was dropped. **A second wrong number:** the first build probe read 11.7 ms
+for the willow's mature `build_tree` in 0.47.1 and 5.0 after; both were taken at load 9 to 16. The least of six runs of the best
+of five, back to back, is **4.7 before and 4.4 ms after**; the CHANGELOG, the guide and the note were corrected before the merge
+(`7d8068d`) and the claim is withdrawn in the note.
+
+**Sources.** Botanical/model: Mirabet, Besnard, Vernoux and Boudaoud 2012, "Noise and robustness in phyllotaxis"
+(`10.1371_journal.pcbi.1002389`: "Lateral organs (leaves and flowers) are successively initiated as primordia at the shoot apex
+yielding a regular arrangement on the stem known as phyllotaxis", divergence "often strikingly close to the golden angle, which
+is about 137.5°"), the species' description (Orwa et al. 2009, Agroforestree Database, *Salix babylonica*: "Leaves lanceolate
+to linear lanceolate, 9-16 cm long, 0.5-1.5 cm wide", "branches pendulous"; read at worldagroforestry.org, not in the corpus).
+Shipping practice: the SpeedTree Modeler manual's "Leaf generator" (read this pass: leaf types by weight, "Camera facing ...
+optimized geometry to reduce overdraw and costly transparent pixels") and `book_real_time_rendering_4th_akenine` ("professional
+packages such as SpeedTree represent and simplify a model with large meshes of alpha-textured sets of leaves and limbs"). Technical:
+the crate's own `lod.rs` (`coarse_leaves`), the scans' tables (`textures/leaves.rs`: 8 triangles a side for a willow leaf).
+Note: `docs/research/strand-leaves.md`. Pending index: Weber and Penn 1995, Hollender et al., the Flora of China page (bot wall,
+403), and a figure for *S. babylonica*'s internode length or leaves per metre (none found).
+
+**Numbers** (`/tmp/f16`, removed; findings in `/tmp/f16/findings.md`, critique in `/tmp/f16/critique.md`).
+
+- Gate, on the branch tree: `cargo build` (default), `--features serde`, `cargo check --no-default-features --lib`, `cargo build
+  --release`, `cargo nextest run --all-features` **398 passed** (394 before + 4 new), `cargo test --all-features --doc` 40 passed,
+  clippy `--all-targets --all-features -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`, `cargo
+  build --examples` and with `--all-features`, `cargo package --locked`: all clean. New tests:
+  `a_strand_leaf_is_a_lance_in_every_leaf_style_and_faces_outward`, `a_strand_leaf_wears_the_scans_own_atlas_coordinates_and_stays_inside_its_card`,
+  `the_budget_and_the_mesher_count_a_strands_leaves_at_its_own_rate`, `strand_density_and_size_change_the_leaves_of_strands_and_nothing_else`.
+  No existing assertion changed (one assertion's call sites took the new `kind` argument).
+- Gallery, 526 scenarios before and 532 after (Apple M5): PNG = rows in both, none under 100 KB, flags `-` x 526 and x 532, no
+  `BLANK_CAPTURE`/`CAPTURE_TIMEOUT`, no `ERROR`/`panicked`, three benign `WARN`s (the asset watcher twice, winit's
+  `Skipped event Destroyed`). **492 of 526 images identical below the HUD; 4 (`painterly_oak`, `painterly_maple`, `toon_oak`,
+  `toon_maple`) one pixel (D-075's run-to-run noise); the 30 that changed are the 27 willow scenarios and `strands_oak`,
+  `strands_oak_plumb`, `strands_oak_floor2`** (`strands_oak_4` is unchanged: no strand has a leaf at age 4). `stats.tsv` columns
+  1-10: identical for the other 502; identical across two runs (the full gallery and `--filter willow`), and CPU against `--gpu`.
+- Coverage probe (mature willow, seed 42, lower third of the crown, front / side): level 0 0.335 / 0.271 -> **0.585 / 0.509**,
+  level 1 0.285 / 0.234 -> 0.562 / 0.485, level 2 0.302 / 0.228 -> 0.552 / 0.475. Willow foliage 74 080 -> 40 924 triangles
+  (92 600 -> 64 832 vertices), level 1 17 754 -> 11 502, level 2 6 652 -> 4 344; leaves on strands 3 212 -> 4 559. Build probe: the 38
+  other (preset, age) cells have identical vertex and triangle counts; build time at a median ratio of 1.00 (none over 1.06).
+- **GPU parity (`compare_gallery`): worse for the willow.** The CI seven: mean of means 0.218 -> **0.235**, worst 0.922 -> **1.043**
+  (`age_willow_6`), worst close 96.52 -> 96.27 percent; the other six identical to the digit; exit 0. Over the 36 willow scenarios:
+  mean of means 0.162 -> 0.179, worst 1.162 (`grow_willow_7`) -> 1.350 (`age_willow_8`). Positions agree
+  (`grown_leaves_and_flowers_match_the_cpu_meshers` passes); the GPU's leaves take their normals and crown shading from the mature
+  tree (`src/gpu/mod.rs`, "What differs from the CPU path") and the lower crown's leaf cover is 1.75 times what it was. A trade,
+  logged: fixing it means changing what `GpuGrowth` bakes (backlog 2). The `--gpu` runs had no `ERROR`/`panicked`.
+- Forest bench (`pool`, 10 000 oaks, 11 alternating runs of each binary, load 2 to 29): ms/frame median 8.27 -> 8.45 (+2.2%),
+  frame median 8.66 -> 8.71 (+0.6%), p95 10.66 -> 10.97 (+2.9%), cpu 25.68 -> **27.67 (+7.7%)**, with single runs from 15 to 29 in
+  either binary and the three quietest pairs at -7%, +1% and -1%: a pool of oaks runs no code this change reaches (an oak has no
+  strand, its meshes are bit-identical), so this is the machine's spread and not a trade I can attribute, and I say so rather than
+  call it clean. `naive --trees 1000`: 40.4 and 40.9 ms before, 40.4 after (a second after run, 45.9, overlapped a build probe of
+  mine and is discarded; a later three-pair run was destroyed by load 16 to 29 and is not quoted). **`gpu-live` printed nothing
+  within 150 s in either binary on this host and was not measured** (the same in iteration 15's log).
+
+**Critique and verdict** (`/tmp/f16/critique.md`, read the full-frame four-view PNGs of `mature_willow`, `seed_willow_2`, the
+six `strandleaf_*`, `age_willow_6`, `grow_willow_5`, `age_willow_12`, `split_willow`, `smooth_willow`, `condition_willow_dying`,
+`season_willow_winter` and `season_willow_falling`, `strands_oak`, and `inspect --preset willow` at 7, 14, 32, 90 and 220 m (pool) and
+1.6, 3.5 and 8 m (tree) against the 0.47.1 binary). **The strand leaves are GREAT** for the paths a game uses (pools, a
+`ProceduralTree`, `TreeLod`): the fence of wires is a leafy curtain to the grass at 14 m (`docs/media/willow.jpg`), the coarse
+levels keep it (within 4 points of level 0), the foliage costs 45 percent fewer triangles, no flag, no hole, deterministic.
+**The willow as a whole (D-052) is NOT YET**: (a) the crown's top is still bare arcs on a slim flat-capped pole; (b) from 30 m
+the tree reads as a leafy dome with a pale fringe on one side, not a column of fringe (the mean strand is 1.6 m on a 5 m tree:
+limbs droop low and floor avoidance trims); (c) under 2 m a lance is a plain diamond where a scanned card had the leaf's curve
+(the junction close-up of `mature_willow` shows two near-camera lances as flat shards); (d) the rate stops at 1.4 because a
+leaf's flush is as long as the next leaf's growth; (e) the dome's own 16-triangle leaves are a coarser layer beside the strands'
+diamonds; (f) GPU parity above. D-052 stays open with these as its list. No clip changed (no release this pass), so the eleven
+README clips are not re-recorded; they show the 0.47.1 willow only in `grove.gif`, whose caption does not describe it.
+
+**Commits** (`loop/iter-16`): `b3f2d02` Research: strand leaves, `c88eda1` the implementation, `d98fc18` docs (README, guide,
+ARCHITECTURE, CLAUDE.md, CHANGELOG, `docs/media/willow.jpg`, D-052), `0406db4` the QA log (D-081, the iteration row), `7d8068d` the
+corrections (the build time, the forest bench). Sibling repositories: none touched. **For Sanctuary and the editor:** nothing to
+change; a `TreeParams` without the three fields loads with the defaults, and a tree of their own with `branches.strands` draws
+lances (a visible change, listed under the CHANGELOG's Breaking line with the new public fields: `LeafPoint::strand` and the
+three `FoliageParams` numbers; `TreeParams::fields()` lists 95 numbers).
+
+**Assumed decisions** (owner may override; no issue to record them on, so here, in the note and in D-081): the three numbers live
+in `FoliageParams`, not in `StrandParams` (the leaf code reads only the foliage; `StrandParams` is the wood); the lance is not
+switchable (one path, `strand_angle` 0 and rate 1 give the old placement, and the lance is the card); the willow's values are
+design defaults (no paper gives a leaf spacing or angle for the species), picked as the smallest that meets 0.45 of cover and
+keeps the protected growth test.
+
+### Ranked backlog after iteration 16
+
+1. **Finish the willow (D-052)**: a rounded top instead of a flat-capped pole, limbs whose leaves reach their tips
+   (`add_distributed_leaves` bunches them: `0.3 + t^2 * 0.7`), a six-point lance under 2 m, a flush window that lets a strand's rate
+   rise past 1.4 (a `GrowthState` field and a shader change), a greener strand colour (needs a per-node wood colour).
+2. **GPU parity of the willow**: `GpuGrowth` bakes leaf normals and crown shading at maturity; the willow's 1.75 times larger
+   leaf cover shows it (0.922 -> 1.043 on `age_willow_6`). Shading the leaves of the grown tree at the age it draws is a slice of
+   its own in `src/gpu/mesh.rs`.
+3. **A glide with no per-tree cost** (iteration 11's item 2): a leaf marker so only leaf meshes are tagged, or a shared slot in the
+   buffer for trees that began together; the leaves a glide loses falling (`LeafBurst`).
+4. **A slider range and a label per field**: a `typical` span and a one-line label for each `ParamField`, if the editor asks.
+5. **The hull crown by leaf size** (`crown_hull` takes positions only, so a CPU-grown hull crown pops when a leaf is born);
+   `PointGrid::nearest` only when a consumer asks.
+
+**Environment, for the next pass.** `CARGO_INCREMENTAL=0` is still needed. This pass's slips, not repeated: a release rebuild
+after an edit took 3.5 to 4.5 minutes when idle and up to 18 minutes with another loop compiling (`cargo build --release --examples
+--all-features`), `bash` calls over 60 s are backgrounded (long runs go `async` with their output in a file), `edit` needs a read that
+displayed the anchored line, a `forest` bench is unusable at load above 8 (check `uptime` first; the pool bench's single runs ranged
+15 to 29 ms cpu on one binary), `forest --mode gpu-live` does not finish here, and a build probe taken while a gallery runs is a
+probe of the load. `gh issue list` printed nothing and exited 0 (an empty list, not an error: `gh repo view` answered).

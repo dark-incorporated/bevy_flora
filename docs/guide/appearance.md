@@ -76,6 +76,27 @@ fn procedural_oak() -> bevy_flora::TreeParams {
 }
 ```
 
+### A willow's curtain: the leaves of a strand
+
+![The willow preset at 14 m, left as 0.47.1 drew it, right with the leaves of its strands out of line with their ropes: the left is a fence of pale wires with a leaf now and then and the bare sky behind, the right a leafy curtain that hangs to the grass](../media/willow.jpg)
+
+*`cargo run --release --example inspect -- --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20`: left, 0.47.1; right, with strand leaves.*
+
+A weeping tree is its strands (`BranchParams::strands`, [growing](growing.md)), and what a strand carries is `FoliageParams`' three strand numbers. `strand_density` is the share of `density` a strand's leaves have (a long thin twig has a row of leaves of its own spacing, not a branch's rate), `strand_size` the share of `leaf_size` they have, and `strand_angle` how far, in degrees, a strand's leaves point out of line with it: each leaf leaves its rope that far to the side that the golden angle's turn from the leaf before gives (spiral phyllotaxis), so the rope is a ribbon as wide as a leaf is long and not a wire with a leaf-wide trim. All three are 1, 1 and 0 for a tree that does not set them, which draws the leaves it always did, but every leaf of a strand is now cut as a four-point lance (the base, tip and two widest points of its scan's outline, wearing the same atlas): 8 vertices and 4 triangles for both sides where a scanned card has 20 and 16.
+
+The turn is the thing: seen from the front and the side, a probe that rasterises every triangle of the mature willow over the lower third of its crown covered 0.335 and 0.271 of it in 0.47.1 (a fence, two thirds sky) and 0.585 and 0.509 now, at 0.552 and 0.475 at the coarsest level of detail, whose leaves are the same lances, kept one in eight and scaled up. Raising the rate alone moved nothing (2.6 times the leaves along the ropes, at 0.7 of their size, in line with them: 0.336), and the rate is held by the growth: a leaf eases in over the growth of rope the next leaf takes, so a denser strand flushes quicker. The willow's 1.4 times keeps every leaf from changing by more than 0.3 of its size in a 0.01-year step (`a_leaf_that_appears_grows_from_nothing`), and 3 times did not. The willow's foliage is 40 900 triangles, down from 74 100, because the new leaves are cheaper than the ones they replace; its build time barely moves (4.4 ms against 4.7 for the mature tree).
+
+```rust,no_run
+use bevy_flora::TreePreset;
+
+fn a_fuller_curtain() -> bevy_flora::TreeParams {
+    let mut willow = TreePreset::Willow.params();
+    willow.foliage.strand_size = 1.1; // longer leaves on the ropes
+    willow.foliage.strand_angle = 55.0; // standing further out of their line
+    willow
+}
+```
+
 ## Looks: natural, painterly, toon
 
 `TreeParams::style` (`RenderStyle`) changes how a tree is lit, not its shape; every preset is `Natural`. `Painterly` gives each leaf the normal that points out of the centre of its own clump (the leaves of one primary branch, the leader or one half of a split) instead of out of the crown's centre, so a crown reads as a cluster of rounded masses, each with a lit side and a shaded side; the lighting is the same physically based lighting as `Natural`. `Toon` keeps those normals, cuts the light of each directional light into three bands (0.15, 0.55 and 1 at `N·L` of 0 and 0.5) times its shadow and the surface colour, keeps the light that comes through backlit leaves, and darkens every surface toward its silhouette with an ink rim. Point and spot lights do not light a toon. Pools, impostors, `GpuGrowth` and growing trees draw them all; without the renderer's plugins (the plain-material fallback) a toon is lit as a painterly tree.
