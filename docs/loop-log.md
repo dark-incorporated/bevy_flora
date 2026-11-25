@@ -1457,3 +1457,18 @@ directory: the dependencies were reused and the crate and three examples took 3 
 path pattern killed the next gate step's compiler too (rerun by hand); one docs edit (`Years` to `Age` in the guide) was
 made with `sed -i` instead of `edit`.
 
+**Merge and clean-up (iteration 14).** `loop/iter-14` pushed; merge `67bc7b6` on `main` (`--no-ff`, `main` already held the
+research commit `b430fff`, tree identical to `loop/iter-14`'s `69511fc`); `cargo nextest run --all-features` re-run on the
+merged tree before the push: 388 passed. No release (6-hour rule), no issue referenced or closed.
+Removed, mine: `/tmp/f14` (3.4 GB: base and new release binaries of `gallery`, `forest`, `compare_gallery`, `inspect`,
+`capture_growth`, `tree_file`, two 526-scenario galleries, the CPU and GPU parity runs, build and gate logs, the
+Sanctuary shallow clone, scripts, findings, critique), the detached baseline worktree `~/f14_base` (`git worktree remove`,
+plain; clean, 119 MB), and the throwaway `src/zz_old_limits.rs`, `examples/zz_probe.rs` and the `mod` line (never
+committed). Kept: `~/target/flora-loop` (16 GB `debug`, 4.8 GB `release`, which did not exist at the start: the next
+pass's release build starts warm instead of taking 34 minutes) and, inside it, the baseline crate's build artifacts, which
+cargo names by hash and which cannot be told apart from the new tree's. `df -h /`: 35 GB free at the start, 21 GB at the
+lowest, 24 GB after. Leftovers of earlier passes, listed and not touched: the worktree
+`/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at
+`42ec6a4`, on `origin/main`, with uncommitted changes: not clean, so not a removal candidate), `wiggum/parked-pass-9-20261102-054127`
+(stale, above), and the branches `loop/iter-4` to `-14` (not deleted).
+
