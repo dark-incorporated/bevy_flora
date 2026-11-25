@@ -7,7 +7,7 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
-A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), and a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`).
+A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`), and the willow's strands carry leafy ribbons where they carried a leaf now and then (`docs/research/strand-leaves.md`, D-052).
 
 ### Added
 
@@ -60,6 +60,32 @@ A second layer of plants, a brush stroke or a replant can keep clear of what alr
   field of `TreeParams` needs a row in `build_fields`; the test
   `the_catalogue_lists_every_number_of_a_tree_and_only_those` finds the fields by reflection and fails for one that is
   missing.
+- **The willow's curtain reads as leaves, not wires** (D-052, `docs/research/strand-leaves.md`; a design decision, D-081). A
+  strand's leaves now have a rate, a size and an angle of their own: `FoliageParams::strand_density` (a share of
+  `density`, 1 by default), `strand_size` (a share of `leaf_size`, 1) and `strand_angle` (degrees out of line with the
+  rope, 0), the angle turning the golden angle round the rope from leaf to leaf (spiral phyllotaxis), and every leaf of a
+  strand is cut as a four-point lance, the base, tip and widest points of its scan's outline with its atlas coordinates
+  (`LeafPoint::strand`): 8 vertices and 4 triangles for both sides where a scanned card has 20 and 16. The willow
+  now sets 1.4, 0.9 and 45 (`src/presets.rs`: its other values are as they were). A probe that rasterises every triangle
+  of the mature willow (seed 42) over the lower third of its crown, from the front and the side, covered 0.335 and 0.271
+  of it in 0.47.1, a fence with two thirds sky, and covers 0.585 and 0.509 now (level 1: 0.562 and 0.485, from 0.285 and
+  0.234; level 2: 0.552 and 0.475, from 0.302 and 0.228: the coarse levels keep the curtain, because a strand's leaves
+  ride through `coarse_leaves` as lances too). Turning the leaves out of the rope's line is what does it: 2.6 times the leaves in line
+  with the ropes moved the cover from 0.335 to 0.336. The willow's foliage is 40 924 triangles, down from 74 080 (64 832
+  vertices, down from 92 600), and `build_tree` of the mature willow takes 5.0 ms where it took 11.7 (best of 5,
+  Apple M5). The rate is held by the growth: a leaf eases in over the growth of rope the next leaf takes, so 3 times the
+  rate failed `a_leaf_that_appears_grows_from_nothing` (a leaf from 0.28 to 0.59 of its size in one 0.01-year step) and the
+  willow keeps 1.4. A tree with no strands draws as it did: of the 526 scenarios of the gallery 492 are identical below
+  the HUD, four (`painterly_oak`, `painterly_maple`, `toon_oak`, `toon_maple`) differ by one pixel as in every earlier
+  iteration, and the 30 that changed are the 27 willow ones and `strands_oak`, `strands_oak_plumb` and
+  `strands_oak_floor2` (the oak's strands carry lances now). Gallery: six `strandleaf_willow_*` scenarios, the bare rope,
+  dense rows of small leaves, in line with the rope and square to it, a few large leaves, and the dense rows on a young tree
+  (532 scenarios). `TreeParams::fields()` lists 95 numbers.
+- **Breaking:** `LeafPoint` has a new public field, `strand` (a struct literal of it needs one), and `FoliageParams` three,
+  `strand_density`, `strand_size` and `strand_angle` (a literal needs them or `..Default::default()`; a `.tree.ron` or
+  `.tree.yaml` without them loads with the defaults). The strand leaves of any tree with strands and leaf cards are
+  lances now, so a tree of your own with `branches.strands` draws different leaves (the oak's in the gallery do). The
+  next release is a minor one.
 
 ## [0.47.1] - 2026-11-25
 
