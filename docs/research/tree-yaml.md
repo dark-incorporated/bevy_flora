@@ -74,13 +74,20 @@ One addition behind one new feature, `yaml`, and a clean extension of the error 
    editor writes `.tree.yaml`; `.tree.yml` is not claimed (a second spelling is a second path).
 4. **`TreeFileError`** is the error of both loaders and of `from_ron` / `from_yaml`: its `Problem` gains a `Yaml`
    variant holding `serde_yaml_ng::Error`, whose message names the line and column and, for a misspelt field, the
-   fields that exist. The type is exported under either feature (it was under `ron` only).
+   fields that exist, and an `EmptyYaml` variant (point 6). The type is exported under either feature (it was under
+   `ron` only).
 5. **What a file may say is bounded as before.** Nothing in the loader is new here: a `.tree.yaml` that says
    `trunk: {height: .nan}` or `1e9` reaches the generator as a `TreeParams` that `sanitized()` holds in range
-   (`hostile-parameters.md`), and a YAML-specific attack is refused by the parser: `serde_yaml_ng` counts alias
-   replays (`RepetitionLimitExceeded`, "repetition limit exceeded") and nesting depth (`RecursionLimitExceeded`,
-   "recursion limit exceeded"), so an alias bomb or a deeply nested file is an `Err`, not an allocation of
-   gigabytes. The test writes one and checks it fails fast.
+   (`hostile-parameters.md`). A YAML-specific attack (an alias bomb, a deeply nested document) never reaches the
+   parser's limits (`RepetitionLimitExceeded`, `RecursionLimitExceeded` in `serde_yaml_ng`'s `de.rs`), because a typed
+   `TreeParams` refuses the first value that is not a field's type (measured: both texts are `invalid type: sequence,
+   expected struct TrunkParams at line 1 column 8`); the test checks that such text is an `Err` at once.
+6. **A text with no document is an error, not a tree of all defaults** (found by the first test run: `serde_yaml_ng`
+   reads `""` as `TreeParams::default()`, because every struct has `#[serde(default)]`). `from_yaml` reads
+   `Option<TreeParams>` and refuses `None` (nothing, whitespace, comments, `null`, `~`); `{}` is the all-defaults tree.
+   An empty `.tree.ron` is an error already, and the reason is the hot reload: an editor that truncates and then
+   writes lets a file watcher read the empty file between the two, and a default tree would replace the tree on
+   screen for a frame. The writer is the editor and the reader is this crate, so the refusal is this crate's.
 
 ## Parameters
 
@@ -97,10 +104,13 @@ None. No default, preset literal or `Default` impl changes. New: Cargo feature `
   `Handle<TreeParams>` equal to the preset it was written from, the `ProceduralTreeAsset` tree follows it, and the
   existing `ron` path still loads `.tree.ron` in the same app (both features on).
 - `examples/assets/trees/maple.tree.yaml`, shipped with the examples, parses to the same `TreeParams` as
-  `maple.tree.ron` (one format cannot drift from the other).
+  `maple.tree.ron` (one format cannot drift from the other; it is generated from the RON file, not from the preset:
+  the RON example is an older export and is not equal to `TreePreset::Maple.params()`, and a test that pinned the
+  YAML to the preset would fail on every preset change).
 - A hostile text is an `Err` or a tree `sanitized()` accepts, never a panic or a hang: `.nan`, `1e9`, `-1`, an alias
-  bomb (about 30 levels of doubling aliases, 2^30 expansions if unbounded) and 10 000 levels of nesting, each in
-  under a second.
+  bomb (40 levels of doubling aliases), 10 000 levels of nesting, an empty text, a null, two documents, a sequence
+  where a struct goes, a NUL, each in under two seconds together.
+- An empty text, whitespace, a comment, `null`, `~` and `---` are errors that say "empty"; `{}` is the default tree.
 - The build is unchanged without the feature: `cargo build` and `cargo build --features ron` do not pull
   `serde_yaml_ng`; the forest bench and the gallery are untouched (no tree-building file is edited), the median of
   three forest benches before and after within noise.
@@ -115,17 +125,30 @@ A misspelt field is a sentence with a line number, not a silent default. A calle
 
 ## Deviations
 
-None. `to_ron`, `from_ron` and `TreeParamsLoader` are unchanged. A design default, stated in the docs: YAML tags the
-variants of the crown and trunk style enums (`crown: !Hull {tiers: 5, ...}`), where RON writes `Hull(...)`, because
-that is how `serde_yaml_ng` writes an enum and what the editor's files contain; a file with the singleton-map form is
-not claimed.
+None of a default or a preset. `to_ron`, `from_ron` and `TreeParamsLoader` are unchanged. Two design defaults, stated in
+the docs: YAML tags the variants of the crown and trunk style enums (`crown: !Hull {tiers: 5, ...}`), where RON writes
+`Hull(...)`, because that is how `serde_yaml_ng` writes an enum and what the editor's files contain, and a file with
+the singleton-map form is not claimed; and `from_yaml` refuses a document-less text where `serde_yaml_ng::from_str`
+alone would read the defaults (point 6), a stricter reading than a bare `serde_yaml_ng` call, for the hot reload's sake.
 
 ## Pending index
 
 - Unity's and Unreal's pages and the `serde_yaml_ng` documentation are web pages, not in the corpus.
 - No source in the corpus measures a text format's cost for a parameter file; a tree file is a few kilobytes read once
   per load, so the loader's cost is not on any frame this crate measures.
-- Note, to be verified by the test below rather than taken on trust: `serde_yaml_ng` 0.10.0's crate page says "This
-  version only support the YAML Specification 1.1", while `bevy_dark_factory`'s `Cargo.toml` says it "follows YAML
-  1.2, so only `true` and `false` are booleans". The test reads `yes`, `no`, `on`, `off` for a `bool` field and
-  records what happens; the file format this crate documents uses only `true` and `false`.
+- Measured 2026-11-25, to settle a conflict between sources: `serde_yaml_ng` 0.10.0's crate page says "This version only
+  support the YAML Specification 1.1", while `bevy_dark_factory`'s `Cargo.toml` says it "follows YAML 1.2, so only
+  `true` and `false` are booleans". For a typed `bool` field the reader accepts `true`, `false`, `True` and `False`
+  and refuses `yes`, `Yes`, `on`, `no` and `1` with `invalid type: string "yes", expected a boolean at line 1
+  column 71`: the editor's description is the one that holds for this crate's types. The singleton-map form of an
+  enum (`crown: {Hull: {...}}`) is refused (`invalid type: map, expected a YAML tag starting with '!'`); a unit
+  variant reads as its name or as `!Name`; two documents are refused (`deserializing from YAML containing more than
+  one document is not supported`).
+
+## Assumed decisions
+
+Assumed decision (owner may override), recorded on #95: (1) the feature is `yaml` and the loader `TreeParamsYamlLoader`
+(not a rename of `TreeParamsLoader`, which would break `ron` users); (2) one extension, `.tree.yaml`; (3) an empty
+file is an error rather than a tree of all defaults (point 6 of "Model adopted"); (4) the shipped example file is
+`examples/assets/trees/maple.tree.yaml`, and the `tree_file` example keeps requiring `ron` (Cargo has no "either
+feature" for `required-features`) and reads a YAML tree when `yaml` is on as well.
