@@ -474,6 +474,11 @@ fn build_fields() -> Vec<ParamField> {
         count!(foliage.cluster_size, 0, 64),
         float!(foliage.leaf_size, Metres, 0.0, 64.0),
         float!(foliage.leaf_size_variation, None, 0.0, 1.0),
+        // A strand's leaf rate and size are shares of the tree's own: a rate up to 16 times (the node's own
+        // cap, `MAX_LEAVES_PER_NODE`, holds the count), a size up to 8 times.
+        float!(foliage.strand_density, None, 0.0, 16.0),
+        float!(foliage.strand_size, None, 0.0, 8.0),
+        float!(foliage.strand_angle, Degrees, 0.0, 90.0),
         float!(foliage.radius_threshold, None, 0.0, 100.0),
         // The density at the crown's base is `1 - falloff` times its top's: 0 to 2.
         float!(foliage.height_falloff, None, -1.0, 1.0),
@@ -976,6 +981,8 @@ mod tests {
             ".foliage.density",
             ".foliage.cluster_size",
             ".foliage.leaf_size",
+            ".foliage.strand_density",
+            ".foliage.strand_size",
         ] {
             fields::set(&mut params, path, 1e30);
         }
@@ -1030,7 +1037,7 @@ mod tests {
         let trees = TreePreset::ALL.map(|preset| (preset.name(), preset.params())).into_iter().chain([("giant oak", giant)]);
         for (name, params) in trees {
             let skeleton = crate::generate_skeleton(&params);
-            let bound: usize = skeleton.nodes.iter().map(|n| leaf_bound(&params.foliage, n.length, n.height_ratio)).sum();
+            let bound: usize = skeleton.nodes.iter().map(|n| leaf_bound(&params.foliage, n.kind, n.length, n.height_ratio)).sum();
             assert!(skeleton.nodes.len() * 4 <= MAX_NODES, "{name}: {} nodes", skeleton.nodes.len());
             assert!(bound * 2 <= MAX_LEAVES, "{name}: could bear {bound} leaves");
         }
