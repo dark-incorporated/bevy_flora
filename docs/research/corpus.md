@@ -174,3 +174,15 @@ what it rests on; this file only says what exists. Newest additions last in each
 - Web, not indexed: Rust standard library, `f32::clamp` ("returns NaN if the initial value was NaN"; panics if `min >
   max`), <https://doc.rust-lang.org/std/primitive.f32.html#method.clamp>. SpeedTree Modeler's branch Clamp group, in
   the manual page listed above.
+
+## Tree files (`.tree.ron`, `.tree.yaml`)
+
+- `10.1109_38.736469`: Lintermann and Deussen 1999, "Interactive Modeling of Plants" (a plant type is a parameter set a
+  tool edits and a program turns into geometry; "models can easily be reused and changed in order to get new tree
+  models").
+- Web, not indexed: Unity, "Format of text serialized files" (Unity's assets are a subset of YAML; floats are written
+  losslessly), <https://docs.unity3d.com/Manual/FormatDescription.html>. `serde_yaml_ng` 0.10.0, crate documentation
+  (enums as `!Tag`, "This version only support the YAML Specification 1.1") and source (`src/de.rs`
+  `RepetitionLimitExceeded`, `recursion_check`; `src/ser.rs` `serialize_f32`), <https://docs.rs/serde_yaml_ng/0.10.0/serde_yaml_ng/>.
+- The last 200 `catalog_recent` events (2026-11-17 to 2026-11-20) hold no tree, plant, foliage, L-system, phenology,
+  fire-spread, impostor, wind or felling document that this file lacks.
