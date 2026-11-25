@@ -420,6 +420,32 @@ fn scenarios() -> Vec<Scenario> {
         add(name.to_string(), params, *age);
     }
 
+    // A strand's leaves (`FoliageParams::strand_density`, `strand_size` and `strand_angle`) on the
+    // willow: a bare rope (one leaf a strand), dense rows of small leaves, leaves in line with their
+    // rope and at right angles to it, a few large ones, and the dense rows on a young tree.
+    let strand_leaves: &[(&str, f32, Edit)] = &[
+        ("strandleaf_willow_bare", inf, |p| p.foliage.strand_density = 0.0),
+        ("strandleaf_willow_dense", inf, |p| {
+            p.foliage.strand_density = 6.0;
+            p.foliage.strand_size = 0.4;
+        }),
+        ("strandleaf_willow_inline", inf, |p| p.foliage.strand_angle = 0.0),
+        ("strandleaf_willow_square", inf, |p| p.foliage.strand_angle = 90.0),
+        ("strandleaf_willow_big", inf, |p| {
+            p.foliage.strand_density = 0.5;
+            p.foliage.strand_size = 3.0;
+        }),
+        ("strandleaf_willow_dense_6", 6.0, |p| {
+            p.foliage.strand_density = 6.0;
+            p.foliage.strand_size = 0.4;
+        }),
+    ];
+    for (name, age, edit) in strand_leaves {
+        let mut params = preset(TreePreset::Willow);
+        edit(&mut params);
+        add(name.to_string(), params, *age);
+    }
+
     // The season (`FloraSeason`, global): turning, every leaf turned, half fallen, bare, and bare
     // under snow. The pine is evergreen, so its first four must match its mature render; in the
     // snow its needles turn white on top.

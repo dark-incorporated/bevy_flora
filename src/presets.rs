@@ -391,6 +391,10 @@ fn pine() -> TreeParams {
     }
 }
 
+fn envf(name: &str, default: f32) -> f32 {
+    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+
 fn willow() -> TreeParams {
     TreeParams {
         seed: 42,
@@ -440,8 +444,8 @@ fn willow() -> TreeParams {
             crown_influence: 0.8,
             floor_avoidance: true,
             floor_level: 0.0,
-            min_twig_radius: 0.003,
-            strands: StrandParams { density: 1.6, start: 0.1, length: 0.7, spread: 10.0, clearance: 0.2 },
+            min_twig_radius: envf("WTR", 0.003),
+            strands: StrandParams { density: envf("WSN", 1.6), start: 0.1, length: 0.7, spread: 10.0, clearance: 0.2 },
         },
         split: SplitParams {
             enabled: false,
@@ -460,13 +464,16 @@ fn willow() -> TreeParams {
             style: LeafStyle::SingleQuad,
             placement: FoliagePlacement::AllBranches,
             orientation: LeafOrientation::FollowBranch,
-            density: 6.5,
+            density: envf("WDN", 6.5),
             cluster_size: 4,
-            leaf_size: 0.34,
+            leaf_size: envf("WLS", 0.34),
             leaf_size_variation: 0.25,
+            strand_density: envf("WSD", 2.5),
+            strand_size: envf("WSS", 0.7),
+            strand_angle: envf("WSA", 40.0),
             radius_threshold: 0.15,
             height_falloff: 0.4,
-            droop: 0.6,
+            droop: envf("WDR", 0.6),
             rotation_variation: 0.8,
             use_crown_density: true,
             color: Color::srgb(0.565, 0.690, 0.376),

@@ -42,6 +42,10 @@ pub struct LeafPoint {
     /// hangs from. The painterly and toon styles shade the leaves of a clump as one soft mass
     /// ([`RenderStyle::Painterly`]).
     pub clump: u32,
+    /// The leaf hangs on a strand ([`StrandParams`](crate::StrandParams)): its card is cut as a
+    /// four-point lance, the leaf's base, tip and two widest points, so a row of them costs a
+    /// quarter of the triangles scanned cards do.
+    pub strand: bool,
 }
 
 /// Leaf points for every node of `skeleton`.
@@ -76,34 +80,46 @@ pub(crate) fn node_leaf_scale(node: &Node, growth: &GrowthParams) -> f32 {
     }
 }
 
-/// Leaves along a branch of `length` metres under
+/// Leaves a metre of wood of `kind` bears under [`FoliagePlacement::AllBranches`]: the tree's
+/// [`FoliageParams::density`], and on a strand its share of it, [`FoliageParams::strand_density`].
+fn leaf_rate(foliage: &FoliageParams, kind: NodeKind) -> f32 {
+    if kind == NodeKind::Strand { foliage.density * foliage.strand_density } else { foliage.density }
+}
+
+/// How long a leaf of a node of `kind` is: [`FoliageParams::leaf_size`], and on a strand its share
+/// of it, [`FoliageParams::strand_size`].
+fn nominal_leaf_size(foliage: &FoliageParams, kind: NodeKind) -> f32 {
+    if kind == NodeKind::Strand { foliage.leaf_size * foliage.strand_size } else { foliage.leaf_size }
+}
+
+/// Leaves along a branch of `kind` and `length` metres under
 /// [`FoliagePlacement::AllBranches`], as a real number: at least one, at most
 /// [`MAX_LEAVES_PER_NODE`], more on longer wood. The
 /// leaf of rank `r` has flushed `clamp(count - r, 0, 1)` (`leaf_flush_scale`), so a leaf eases in
 /// over the growth of branch that the next one takes to be born.
 // `f32::max` and `min` read a `NaN` as the other bound (one leaf); `clamp` would keep the `NaN`.
 #[allow(clippy::manual_clamp)]
-pub(crate) fn distributed_leaf_amount(foliage: &FoliageParams, length: f32, height_ratio: f32) -> f32 {
+pub(crate) fn distributed_leaf_amount(foliage: &FoliageParams, kind: NodeKind, length: f32, height_ratio: f32) -> f32 {
     let height_mod = height_modifier(height_ratio, foliage);
-    (foliage.density * length * height_mod).max(1.0).min(MAX_LEAVES_PER_NODE)
+    (leaf_rate(foliage, kind) * length * height_mod).max(1.0).min(MAX_LEAVES_PER_NODE)
 }
 
-/// The most leaves a node of `length` metres at `height_ratio` can bear under `foliage` in any
-/// placement, terminal or not: what [`generate_skeleton`](crate::generate_skeleton) adds up against
-/// [`MAX_LEAVES`](crate::MAX_LEAVES) without building a mesh.
-pub(crate) fn leaf_bound(foliage: &FoliageParams, length: f32, height_ratio: f32) -> usize {
+/// The most leaves a node of `kind` and `length` metres at `height_ratio` can bear under `foliage`
+/// in any placement, terminal or not: what [`generate_skeleton`](crate::generate_skeleton) adds up
+/// against [`MAX_LEAVES`](crate::MAX_LEAVES) without building a mesh.
+pub(crate) fn leaf_bound(foliage: &FoliageParams, kind: NodeKind, length: f32, height_ratio: f32) -> usize {
     let height_mod = height_modifier(height_ratio, foliage);
     match foliage.placement {
-        FoliagePlacement::AllBranches => distributed_leaf_amount(foliage, length, height_ratio) as usize,
+        FoliagePlacement::AllBranches => distributed_leaf_amount(foliage, kind, length, height_ratio) as usize,
         FoliagePlacement::TerminalBranches => ((foliage.density * height_mod) as usize).max(1),
         FoliagePlacement::TipClusters => ((foliage.cluster_size as f32 * height_mod) as usize).max(1),
     }
 }
 
-/// Whole leaves along a branch of `length` metres under [`FoliagePlacement::AllBranches`]: the
-/// leaves that have flushed (`distributed_leaf_amount` truncated).
-pub(crate) fn distributed_leaf_count(foliage: &FoliageParams, length: f32, height_ratio: f32) -> i32 {
-    distributed_leaf_amount(foliage, length, height_ratio) as i32
+/// Whole leaves along a branch of `kind` and `length` metres under [`FoliagePlacement::AllBranches`]:
+/// the leaves that have flushed (`distributed_leaf_amount` truncated).
+pub(crate) fn distributed_leaf_count(foliage: &FoliageParams, kind: NodeKind, length: f32, height_ratio: f32) -> i32 {
+    distributed_leaf_amount(foliage, kind, length, height_ratio) as i32
 }
 
 /// How grown the leaf of rank `ordinal` is on a branch that carries `amount` leaves
@@ -236,7 +252,7 @@ fn add_terminal_leaves(
     let height_mod = height_modifier(node.height_ratio, foliage);
     let count = ((foliage.density * height_mod) as i32).max(1);
     for _ in 0..count {
-        let size = foliage.leaf_size
+        let size = nominal_leaf_size(foliage, node.wood.kind)
             * (1.0 + rng.range(-foliage.leaf_size_variation, foliage.leaf_size_variation));
         let direction = leaf_direction(node, foliage, rng);
         let offset = rng.range(0.0, node.length * 0.2);
@@ -249,6 +265,7 @@ fn add_terminal_leaves(
             tint: 0.0,
             hue: 0.0,
             clump: 0,
+            strand: node.wood.kind == NodeKind::Strand,
         });
     }
 }
@@ -286,9 +303,10 @@ fn add_distributed_leaves(
     foliage: &FoliageParams,
     rng: &mut SeededRng,
 ) -> LeafSlots {
-    let amount = distributed_leaf_amount(foliage, node.length, node.height_ratio);
+    let kind = node.wood.kind;
+    let amount = distributed_leaf_amount(foliage, kind, node.length, node.height_ratio);
     let count = amount as i32 as usize;
-    let strand = node.wood.kind == NodeKind::Strand;
+    let strand = kind == NodeKind::Strand;
     // A leaf keeps its place on its branch as the branch grows (docs/research/leaf-places.md): the
     // grown branch has `total` slots, slot `j` at `(j + u_j) / total` of the way, with draws of its
     // own (the same at every age), and a branch that is `count` leaves long shows the `count`
@@ -296,14 +314,17 @@ fn add_distributed_leaves(
     // has now over the branch would move every one of them each time it gains a leaf. The leaf
     // whose turn comes next is born at nothing and grows to its size over the length of branch
     // the one after it takes to be born (`leaf_flush_scale`, docs/research/leaf-ease-in.md).
-    let total = (distributed_leaf_count(foliage, node.wood.full_length, node.height_ratio) as usize).max(count);
+    let total = (distributed_leaf_count(foliage, kind, node.wood.full_length, node.height_ratio) as usize).max(count);
     let ranks = leaf_ranks(total);
     let mut kept = Vec::with_capacity(count + 1);
     for (slot, &rank) in ranks.iter().enumerate() {
         let t = (slot as f32 + rng.range(0.0, 1.0)) / total as f32;
-        let size = foliage.leaf_size
+        let size = nominal_leaf_size(foliage, kind)
             * (1.0 + rng.range(-foliage.leaf_size_variation, foliage.leaf_size_variation));
-        let direction = leaf_direction(node, foliage, rng);
+        let mut direction = leaf_direction(node, foliage, rng);
+        if strand && foliage.strand_angle > 0.0 {
+            direction = strand_leaf_direction(node, foliage, slot);
+        }
         let rotation = rng.range(0.0, TAU) * foliage.rotation_variation;
         let flush = leaf_flush_scale(amount, rank);
         if flush <= 0.0 {
@@ -319,6 +340,7 @@ fn add_distributed_leaves(
             tint: 0.0,
             hue: 0.0,
             clump: 0,
+            strand,
         });
         kept.push(slot as u32);
     }
@@ -370,7 +392,7 @@ fn add_cluster_leaves(
         if trunk_depth(node.trunk, node.seed, node.end + offset) > 0.0 {
             offset = -offset;
         }
-        let size = foliage.leaf_size
+        let size = nominal_leaf_size(foliage, node.wood.kind)
             * (1.0 + rng.range(-foliage.leaf_size_variation, foliage.leaf_size_variation));
         points.push(LeafPoint {
             position: node.end + offset,
@@ -380,6 +402,7 @@ fn add_cluster_leaves(
             tint: 0.0,
             hue: 0.0,
             clump: 0,
+            strand: node.wood.kind == NodeKind::Strand,
         });
     }
 }
@@ -390,6 +413,23 @@ fn height_modifier(height_ratio: f32, foliage: &FoliageParams) -> f32 {
     }
     let base = 1.0 - foliage.height_falloff;
     base + height_ratio * foliage.height_falloff
+}
+
+/// The turn between one leaf and the next round a strand, in radians: the golden angle, the
+/// divergence of spiral phyllotaxis (Mirabet et al. 2012, `10.1371/journal.pcbi.1002389`).
+const GOLDEN_ANGLE: f32 = 2.399_963;
+
+/// The direction of the leaf in slot `slot` of a strand: the strand's own turned
+/// [`FoliageParams::strand_angle`] degrees out of line, to the side the slot's turn round the strand
+/// says (each strand starts its spiral at a turn of its own), then drooped as every leaf is. Leaves
+/// that point along their rope hang in its line and cover a hand's width of it; leaves that leave it
+/// as a willow's do, alternately on every side, make the rope a leafy ribbon.
+fn strand_leaf_direction(node: &NodeCtx, foliage: &FoliageParams, slot: usize) -> Vec3 {
+    let axis = node.direction;
+    let (out, _, _) = build_basis(axis, slot as f32 * GOLDEN_ANGLE + node.wood.id as f32);
+    let turn = foliage.strand_angle.to_radians();
+    let leaning = axis * turn.cos() + out * turn.sin();
+    Vec3::new(leaning.x, leaning.y - foliage.droop, leaning.z).normalize_or_zero()
 }
 
 fn leaf_direction(node: &NodeCtx, foliage: &FoliageParams, rng: &mut SeededRng) -> Vec3 {
@@ -617,6 +657,9 @@ fn build_foliage(points: &[LeafPoint], foliage: &FoliageParams, style: RenderSty
         // A hull tree has no cards: its crown is the hull, appended last.
         if matches!(crown, Crown::Cards) {
             let card = scanned_card(foliage, point, coarse);
+            // A strand's leaf is cut as a lance, whatever the scan (`LeafPoint::strand`).
+            let lance = point.strand.then(|| Lance::of(card.as_ref()));
+            let card = lance.as_ref().map(Lance::card).or(card);
             match foliage.style {
                 LeafStyle::CrossedPlanes => crossed_planes(leaves, point, card.as_ref()),
                 LeafStyle::SingleQuad => single_quad(leaves, point, card.as_ref()),
@@ -1015,11 +1058,81 @@ pub(crate) const LEAF_OUTLINE: [Vec2; 8] = [
 /// A scanned leaf's card: the leaf's real outline (card units, as [`LEAF_OUTLINE`]), its atlas
 /// coordinates, its triangulation and its width over length.
 #[cfg_attr(not(feature = "textures"), allow(dead_code))]
-struct Card {
+struct Card<'a> {
     aspect: f32,
-    outline: &'static [[f32; 2]],
-    uv: &'static [[f32; 2]],
-    triangles: &'static [u16],
+    outline: &'a [[f32; 2]],
+    uv: &'a [[f32; 2]],
+    triangles: &'a [u16],
+}
+
+/// The triangles of a fan over up to four points: the first two of the four-point lance, the first
+/// of a three-point one.
+const LANCE_FAN: [u16; 6] = [0, 1, 2, 0, 2, 3];
+
+/// A strand leaf's card ([`LeafPoint::strand`]): a leaf's outline cut down to the four points that
+/// reach furthest, its base and tip along it and its widest point on each side, in the outline's
+/// order. A row of forty such leaves on a rope costs what ten scanned ones do (four triangles for
+/// both sides, against sixteen), and at the distance a rope is seen from a leaf's own serration is
+/// below a pixel. The atlas coordinates of the points are the scan's own, so the lance wears the
+/// same leaf.
+struct Lance {
+    aspect: f32,
+    outline: [[f32; 2]; 4],
+    uv: [[f32; 2]; 4],
+    /// Of the four points, how many are distinct (a leaf whose widest point is its base has three).
+    points: usize,
+}
+
+impl Lance {
+    /// The lance of the scanned leaf `card`, or, without one, of the procedural leaf
+    /// ([`LEAF_OUTLINE`]).
+    fn of(card: Option<&Card>) -> Lance {
+        let Some(card) = card else {
+            let corners = [0, 2, 4, 6].map(|i| LEAF_OUTLINE[i]);
+            return Lance {
+                aspect: 1.0,
+                outline: corners.map(|p| p.to_array()),
+                uv: corners.map(|p| ((p + Vec2::ONE) * 0.5).to_array()),
+                points: 4,
+            };
+        };
+        // The outline's extremes: lowest (the base), widest to the right, highest (the tip), widest
+        // to the left. An outline lists its points counter-clockwise, so taking them in index order
+        // keeps the winding.
+        let extreme = |key: fn(&[f32; 2]) -> f32| {
+            let mut best = 0;
+            for (i, p) in card.outline.iter().enumerate() {
+                if key(p) > key(&card.outline[best]) {
+                    best = i;
+                }
+            }
+            best
+        };
+        let mut picks = [extreme(|p| -p[1]), extreme(|p| p[0]), extreme(|p| p[1]), extreme(|p| -p[0])];
+        picks.sort_unstable();
+        let mut lance = Lance { aspect: card.aspect, outline: [[0.0; 2]; 4], uv: [[0.0; 2]; 4], points: 0 };
+        for (k, &i) in picks.iter().enumerate() {
+            if k > 0 && picks[k - 1] == i {
+                continue;
+            }
+            if let (Some(&p), Some(&uv)) = (card.outline.get(i), card.uv.get(i)) {
+                lance.outline[lance.points] = p;
+                lance.uv[lance.points] = uv;
+                lance.points += 1;
+            }
+        }
+        lance
+    }
+
+    /// The card of the lance.
+    fn card(&self) -> Card<'_> {
+        Card {
+            aspect: self.aspect,
+            outline: &self.outline[..self.points],
+            uv: &self.uv[..self.points],
+            triangles: &LANCE_FAN[..3 * self.points.saturating_sub(2)],
+        }
+    }
 }
 
 /// Whether the leaf cards of `foliage` are cut to a scanned leaf's outline and wear its
@@ -1035,7 +1148,7 @@ pub(crate) fn uses_scan(foliage: &FoliageParams) -> bool {
 /// hash of the leaf's own random draws (its tint and hue), which never change as the tree ages,
 /// so a leaf keeps its shape as the tree grows and `GpuGrowth` draws the same leaf.
 #[cfg(feature = "textures")]
-fn scanned_card(foliage: &FoliageParams, point: &LeafPoint, coarse: bool) -> Option<Card> {
+fn scanned_card(foliage: &FoliageParams, point: &LeafPoint, coarse: bool) -> Option<Card<'static>> {
     if !uses_scan(foliage) {
         return None;
     }
@@ -1050,7 +1163,7 @@ fn scanned_card(foliage: &FoliageParams, point: &LeafPoint, coarse: bool) -> Opt
 }
 
 #[cfg(not(feature = "textures"))]
-fn scanned_card(_foliage: &FoliageParams, _point: &LeafPoint, _coarse: bool) -> Option<Card> {
+fn scanned_card(_foliage: &FoliageParams, _point: &LeafPoint, _coarse: bool) -> Option<Card<'static>> {
     None
 }
 
@@ -1147,6 +1260,7 @@ mod tests {
             tint: 0.0,
             hue: 0.0,
             clump: 0,
+            strand: false,
         }
     }
 
@@ -1297,6 +1411,7 @@ mod tests {
             tint: 0.0,
             hue: 0.0,
             clump: 0,
+            strand: false,
         };
         for style in [
             LeafStyle::CrossedPlanes,
@@ -1311,6 +1426,107 @@ mod tests {
         }
     }
 
+    /// A leaf placed arbitrarily, off a strand.
+    fn tilted_leaf() -> LeafPoint {
+        LeafPoint {
+            position: Vec3::new(1.0, 2.0, -0.5),
+            direction: Vec3::new(0.4, -0.3, 0.7).normalize(),
+            size: 0.8,
+            rotation: 1.1,
+            ..point()
+        }
+    }
+
+    #[test]
+    fn a_strand_leaf_is_a_lance_in_every_leaf_style_and_faces_outward() {
+        let plain = tilted_leaf();
+        let strand = LeafPoint { strand: true, ..plain.clone() };
+        for style in [LeafStyle::CrossedPlanes, LeafStyle::SingleQuad, LeafStyle::StarBurst] {
+            // The procedural card, and with the scans a scanned one.
+            let mut foliages = vec![flat(style)];
+            #[cfg(feature = "textures")]
+            foliages.push(FoliageParams { scan: Some(crate::params::LeafScan::Willow), ..flat(style) });
+            for foliage in foliages {
+                let name = format!("{style:?}, scan {:?}", foliage.scan);
+                let lance = foliage_mesh(std::slice::from_ref(&strand), &foliage);
+                let card = foliage_mesh(std::slice::from_ref(&plain), &foliage);
+                assert_indices_valid(&lance, &name);
+                assert_faces_outward(&lance, &name);
+                // Under half the vertices and a third of the triangles of the leaf it stands for.
+                assert!(lance.positions.len() * 2 < card.positions.len(), "{name}: {} vertices for {}", lance.positions.len(), card.positions.len());
+                assert!(lance.indices.len() * 3 <= card.indices.len(), "{name}: {} indices for {}", lance.indices.len(), card.indices.len());
+                if style == LeafStyle::SingleQuad {
+                    // Four points and two triangles a side.
+                    assert_eq!((lance.positions.len(), lance.indices.len()), (8, 12), "{name}");
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "textures")]
+    #[test]
+    fn a_strand_leaf_wears_the_scans_own_atlas_coordinates_and_stays_inside_its_card() {
+        let strand = LeafPoint { strand: true, ..tilted_leaf() };
+        let foliage = FoliageParams { scan: Some(crate::params::LeafScan::Willow), ..flat(LeafStyle::SingleQuad) };
+        let lance = foliage_mesh(std::slice::from_ref(&strand), &foliage);
+        let card = foliage_mesh(std::slice::from_ref(&LeafPoint { strand: false, ..strand.clone() }), &foliage);
+        let atlas: Vec<[f32; 2]> = crate::textures::leaves::LEAF_SETS[crate::params::LeafScan::Willow as usize]
+            .leaves
+            .iter()
+            .flat_map(|leaf| leaf.uv.iter().copied())
+            .collect();
+        assert!(lance.uvs.iter().all(|uv| atlas.contains(&uv.to_array())), "a lance corner is not a point of the scan's outline");
+        // Its corners are points of the same leaf's outline, so it lies within the card's own bounds.
+        let (lo, hi) = card.positions.iter().fold((Vec3::MAX, Vec3::MIN), |(lo, hi), &p| (lo.min(p), hi.max(p)));
+        let slack = Vec3::splat(1e-4);
+        assert!(lance.positions.iter().all(|&p| p.cmpge(lo - slack).all() && p.cmple(hi + slack).all()), "a lance reaches outside a leaf");
+    }
+
+    #[test]
+    fn the_budget_and_the_mesher_count_a_strands_leaves_at_its_own_rate() {
+        let foliage = FoliageParams {
+            placement: FoliagePlacement::AllBranches,
+            density: 4.0,
+            strand_density: 3.0,
+            use_crown_density: false,
+            ..FoliageParams::default()
+        };
+        assert_eq!(leaf_bound(&foliage, NodeKind::Strand, 1.0, 1.0), 12);
+        assert_eq!(leaf_bound(&foliage, NodeKind::Sub, 1.0, 1.0), 4);
+        assert_eq!(distributed_leaf_count(&foliage, NodeKind::Strand, 1.5, 1.0), 18);
+        assert_eq!(distributed_leaf_count(&foliage, NodeKind::Primary, 1.5, 1.0), 6);
+    }
+
+    #[test]
+    fn strand_density_and_size_change_the_leaves_of_strands_and_nothing_else() {
+        let params = TreePreset::Willow.params();
+        let skeleton = generate_skeleton(&params);
+        let same = FoliageParams { strand_density: 1.0, strand_size: 1.0, ..params.foliage.clone() };
+        let changed = FoliageParams { strand_density: 3.0, strand_size: 0.5, ..params.foliage.clone() };
+        let (mut on_strands_before, mut on_strands_after) = (Vec::new(), Vec::new());
+        for (i, node) in skeleton.nodes.iter().enumerate() {
+            let (mut a, mut b) = (Vec::new(), Vec::new());
+            leaf_points_for_node(&skeleton, i, &same, &params.growth, &params.trunk, params.seed, &mut a);
+            leaf_points_for_node(&skeleton, i, &changed, &params.growth, &params.trunk, params.seed, &mut b);
+            if node.kind == NodeKind::Strand {
+                assert!(a.iter().chain(&b).all(|p| p.strand), "a leaf of a strand is not marked");
+                on_strands_before.extend(a);
+                on_strands_after.extend(b);
+            } else {
+                assert!(a.iter().all(|p| !p.strand), "a leaf of node {i} is marked as a strand's");
+                assert_eq!(a, b, "node {i} is no strand and its leaves moved");
+            }
+        }
+        assert!(on_strands_before.len() > 1000, "{} leaves on strands", on_strands_before.len());
+        // Three times the rate, nearly (a strand keeps at least one leaf and counts whole leaves)...
+        let more = on_strands_after.len() as f32 / on_strands_before.len() as f32;
+        assert!((2.6..=3.2).contains(&more), "{more} times the leaves");
+        // ...at half the size.
+        let mean = |v: &[LeafPoint]| v.iter().map(|p| p.size).sum::<f32>() / v.len() as f32;
+        let ratio = mean(&on_strands_after) / mean(&on_strands_before);
+        assert!((ratio - 0.5).abs() < 0.03, "leaves are {ratio} of their size");
+    }
+
     #[test]
     fn leaf_cards_grow_out_of_their_attachment_point() {
         // D-045: cards centred on the leaf point were threaded on their twig
@@ -1323,6 +1539,7 @@ mod tests {
             tint: 0.0,
             hue: 0.0,
             clump: 0,
+            strand: false,
         };
         let (_, up, _) = build_basis(p.direction, p.rotation);
         for style in [LeafStyle::CrossedPlanes, LeafStyle::SingleQuad] {
@@ -1985,8 +2202,8 @@ mod tests {
         // every branch has at least one leaf, and that one is whole from the first (the node's own
         // `leaf_scale` grows it from nothing)
         let sparse = FoliageParams { density: 1.0, ..FoliageParams::default() };
-        assert_eq!(distributed_leaf_amount(&sparse, 0.2, 0.0), 1.0);
-        assert_eq!(leaf_flush_scale(distributed_leaf_amount(&sparse, 0.2, 0.0), 0), 1.0);
+        assert_eq!(distributed_leaf_amount(&sparse, NodeKind::Sub, 0.2, 0.0), 1.0);
+        assert_eq!(leaf_flush_scale(distributed_leaf_amount(&sparse, NodeKind::Sub, 0.2, 0.0), 0), 1.0);
     }
 
     #[test]
