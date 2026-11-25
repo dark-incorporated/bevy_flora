@@ -186,3 +186,16 @@ what it rests on; this file only says what exists. Newest additions last in each
   `RepetitionLimitExceeded`, `recursion_check`; `src/ser.rs` `serialize_f32`), <https://docs.rs/serde_yaml_ng/0.10.0/serde_yaml_ng/>.
 - The last 200 `catalog_recent` events (2026-11-17 to 2026-11-20) hold no tree, plant, foliage, L-system, phenology,
   fire-spread, impostor, wind or felling document that this file lacks.
+
+## Parameter panels (`TreeParams::fields`)
+
+- `10.1111_cgf.12744`: the related-work passage on Weber and Penn 1995 (no catalog entry; "requiring adjustment of up to
+  80 parameters"; already listed above for the limits).
+- Web, not indexed: Epic Games, "Metadata Specifiers in Unreal Engine" (`ClampMin`, `ClampMax`; "Metadata only exists in
+  the editor"), <https://dev.epicgames.com/documentation/en-us/unreal-engine/metadata-specifiers-in-unreal-engine>.
+  Unity, SpeedTree Modeler, "Branch generator properties" (a `Clamp` group of Min and Max per property),
+  <https://docs.unity3d.com/speedtree-modeler/manual/branch-generator-properties.html>. `bevy_reflect` 0.20.0
+  `src/attributes.rs` (a range declared on a field with `#[reflect(@RangeInclusive::<f32>::new(0.0, 1.0))]`, read from
+  `TypeInfo`).
+- The last 200 `catalog_recent` events were re-read on 2026-11-25 (the same 2026-11-17 to 2026-11-20 window as
+  iteration 13: no new tree, plant, foliage, phenology, fire, impostor, wind or felling document).
