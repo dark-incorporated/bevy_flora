@@ -1,0 +1,137 @@
+seed: 42
+trunk:
+  height: 8.0
+  radius: 0.5
+  radial_segments: 8
+  height_segments: 8
+  taper: 0.35
+  taper_curve: 0.5
+  flare: 1.15
+  randomness: 0.05
+  root_flare_count: 4
+  root_flare_spread: 0.5
+  root_flare_height: 0.15
+  termination: LeaderBranch
+  leader_length: 0.1
+  leader_taper: 0.12
+  leader_has_branches: true
+  twist: 10.0
+branches:
+  start: 0.35
+  end: 0.9
+  density: 3.0
+  length: 0.55
+  angle: 52.0
+  radius_ratio: 0.32
+  taper: 0.7
+  phyllotaxis_angle: 137.5
+  randomness: 0.2
+  up_attraction: 0.1
+  recursion: 2
+  sub_branch_count: 3
+  sub_branch_scale: 0.55
+  length_variation: 0.2
+  sub_branch_position_bias: 0.15
+  apical_dominance: 0.45
+  flatness: 0.25
+  angle_curve: 0.0
+  crown_angle_variation: -0.15
+  twist: 8.0
+  gravity_strength: 0.25
+  stiffness: 0.55
+  break_chance: 0.05
+  crown_shape: Spherical
+  crown_influence: 0.85
+  floor_avoidance: true
+  floor_level: 0.0
+  min_twig_radius: 0.005
+  strands:
+    density: 0.0
+    start: 0.4
+    length: 0.5
+    spread: 12.0
+    clearance: 0.15
+split:
+  enabled: true
+  probability: 0.25
+  angle: 28.0
+  position: 0.5
+  radius_threshold: 0.1
+mesh:
+  smooth_iterations: 0
+  smooth_factor: 0.5
+  adaptive_resolution: false
+  resolution_scale: 16.0
+  min_radial_segments: 4
+  max_radial_segments: 16
+  pipe_radius_enabled: false
+  pipe_radius_exponent: 2.0
+  pipe_radius_min: 0.02
+  collar_enabled: true
+  collar_length: 1.5
+foliage:
+  enabled: true
+  style: CrossedPlanes
+  placement: AllBranches
+  orientation: RadialOutward
+  density: 4.5
+  cluster_size: 5
+  leaf_size: 0.39
+  leaf_size_variation: 0.2
+  radius_threshold: 0.18
+  height_falloff: 0.25
+  droop: 0.12
+  rotation_variation: 0.6
+  use_crown_density: true
+  normal_bend: 0.8
+  color_variation: 0.3
+  hue_variation: 0.3
+  occlusion: 0.6
+  color: !Srgba
+    red: 0.133
+    green: 0.322
+    blue: 0.133
+    alpha: 1.0
+  shading:
+    translucency: 1.0
+    transmission_tint: !Srgba
+      red: 1.0
+      green: 0.95
+      blue: 0.55
+      alpha: 1.0
+    roughness: 0.55
+    veins: 0.5
+    underside: 0.25
+  scan: Maple
+  autumn: !Srgba
+    red: 0.88
+    green: 0.25
+    blue: 0.02
+    alpha: 1.0
+  blossom: null
+  fruit: null
+growth:
+  maturity_age: 10.0
+  trunk_fraction: 0.4
+  branch_fraction: 0.35
+  child_duration_scale: 0.8
+  thickening_lag: 2.0
+  leaf_threshold: 0.5
+wind:
+  sway: 0.9
+  flutter: 1.0
+  sway_frequency: 1.0
+  flutter_frequency: 1.0
+trunk_color: !Srgba
+  red: 0.32
+  green: 0.21
+  blue: 0.12
+  alpha: 1.0
+bark:
+  scan: Maple
+  smooth_below: 0.03
+  fissured_above: 0.15
+style: Natural
+crown: Leaves
+trunk_style: Round
+undergrowth: false

@@ -33,6 +33,13 @@ jobs:
       - name: Build with serde
         run: cargo build --features serde
 
+      # Each file format on its own: a game that reads YAML compiles no RON, and the other way round.
+      - name: Build with only the YAML tree files
+        run: cargo build --features yaml
+
+      - name: Build with only the RON tree files
+        run: cargo build --features ron
+
       # Every test here is CPU geometry; none opens a window.
       - uses: taiki-e/install-action@nextest
       - name: Test
