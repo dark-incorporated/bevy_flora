@@ -126,8 +126,8 @@ a function of its slot, and the shaders and `GpuGrowth` already take whatever nu
    the seven-scenario set), no mesh flag, leaves of a strand are born where they were.
 5. Same seed, same tree; a strand leaf never changes shape or place with age (the existing tests for leaf
    places and shapes, extended to strand leaves).
-6. Cost: `build_tree` of the willow (11.7 ms mature in 0.47.1, one core) is quoted; every other preset's build
-   probe within 5 percent; the forest bench's three modes within 5 percent (no willow in them).
+6. Cost: `build_tree` of the willow (4.7 ms mature in 0.47.1, one core) is quoted; every other preset's build
+   probe within 5 percent; the forest bench's modes within 5 percent (no willow in them).
 
 ## Measured (iteration 16)
 
@@ -158,8 +158,18 @@ is 1.350 (`age_willow_8`) where it was 1.162 (`grow_willow_7`): the GPU's leaves
 from the mature tree (`src/gpu/mod.rs`, "What differs from the CPU path") and the lower crown's leaves now cover 1.75
 times the area that difference shows on, with no difference in where a leaf is (`grown_leaves_and_flowers_match_the_cpu_meshers`
 passes); (5) the existing leaf-place and shape tests pass and a strand leaf's direction is a function of its slot;
-(6) `build_tree` of the willow 5.0 ms where it was 11.7 (best of 5), every other preset unmoved (their meshes are
-bit-identical).
+(6) `build_tree` of the willow 4.4 ms where it was 4.7 (the least of six runs of the best of five, back to back, on a
+machine loaded by other loops; an earlier reading of 11.7 against 5.0 was the load, not the change, and is withdrawn), every
+other preset's meshes bit-identical and their build time at a median ratio of 1.00 (none over 1.06).
+
+The forest bench (`forest --offscreen --deterministic --mode pool`, 10 000 oaks, 11 alternating runs of each binary on a
+machine other loops were using, load 2 to 29): ms/frame median 8.27 before, 8.45 after (+2.2%); the frame median 8.66
+and 8.71 (+0.6%); p95 10.66 and 10.97 (+2.9%); cpu ms/frame 25.68 and 27.67 (+7.7%, with single runs from 15 to 29 in
+either binary and the three quietest pairs at -7%, +1% and -1%). A pool of oaks runs no code this change reaches (an oak
+has no strand, its meshes are bit-identical), so the spread is the machine's. `naive --trees 1000`: 40.4 and 40.9 ms before, 40.4
+ms after (a second after-run, 45.9, overlapped a build probe of mine and is discarded; a later run of three alternating
+pairs was destroyed by load 16 to 29 and is not quoted). `gpu-live` printed nothing within 150 s in either binary on this
+host and was not measured.
 
 ## What great looks like
 

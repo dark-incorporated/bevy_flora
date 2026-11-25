@@ -72,8 +72,9 @@ A second layer of plants, a brush stroke or a replant can keep clear of what alr
   0.234; level 2: 0.552 and 0.475, from 0.302 and 0.228: the coarse levels keep the curtain, because a strand's leaves
   ride through `coarse_leaves` as lances too). Turning the leaves out of the rope's line is what does it: 2.6 times the leaves in line
   with the ropes moved the cover from 0.335 to 0.336. The willow's foliage is 40 924 triangles, down from 74 080 (64 832
-  vertices, down from 92 600), and `build_tree` of the mature willow takes 5.0 ms where it took 11.7 (best of 5,
-  Apple M5). The rate is held by the growth: a leaf eases in over the growth of rope the next leaf takes, so 3 times the
+  vertices, down from 92 600), and `build_tree` of the mature willow takes 4.4 ms where it took 4.7 (the least of six
+  runs of the best of five, back to back, Apple M5 under other loops' load: about 7% less; every other preset's meshes
+  are bit-identical and their build time moved by a median ratio of 1.00). The rate is held by the growth: a leaf eases in over the growth of rope the next leaf takes, so 3 times the
   rate failed `a_leaf_that_appears_grows_from_nothing` (a leaf from 0.28 to 0.59 of its size in one 0.01-year step) and the
   willow keeps 1.4. A tree with no strands draws as it did: of the 526 scenarios of the gallery 492 are identical below
   the HUD, four (`painterly_oak`, `painterly_maple`, `toon_oak`, `toon_maple`) differ by one pixel as in every earlier
