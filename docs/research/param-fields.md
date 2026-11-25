@@ -80,8 +80,8 @@ reflection, which already give a panel their variants.
 
 ## Parameters
 
-`ParamUnit`: `Metres`, `Degrees`, `PerMetre` (`branches.density`, `branches.strands.density`), `Years` (`growth.maturity_age`)
-and `None` for a share, ratio, exponent or multiplier (the field's doc says of what). Hard limits only: the `min` and
+`ParamUnit`: `Metres`, `Degrees`, `PerMetre` (`branches.density`, `branches.strands.density`), `Age` (`growth.maturity_age`: `TreeAge`
+counts "growth units", not years, as its doc says; the first draft called it `Years`) and `None` for a share, ratio, exponent or multiplier (the field's doc says of what). Hard limits only: the `min` and
 `max` are `limits.rs`'s existing ranges, unchanged, wide by design (more than a factor of ten over the presets).
 No default of any `TreeParams` field, no preset and no range moves.
 
@@ -99,10 +99,28 @@ No default of any `TreeParams` field, no preset and no range moves.
 5. `set_field` refusals each name the field and the range; success reads back through `field`; a refusal leaves the
    parameters unchanged.
 
+## Measured findings (iteration 14)
+
+- The reflection helper names an enum's fields without the variant (`.crown.tiers`, not `.crown.Hull.tiers`) and reads an
+  optional part through its tuple field (`.foliage.fruit.0.radius`, not `.Some.0.`), and a colour is `Color::Srgba`'s
+  tuple field `0` and then `red`, with no colour-space name in the path: the first draft of the tests assumed the
+  serde-style paths and a space name, which reading `fields::numeric` showed were wrong before any run. The tests map
+  the catalogue's serde-style paths to reflection's (`reflected`, `catalogued`) and name the six colour fields, so a
+  seventh colour or a number of a new field fails `the_catalogue_lists_every_number_of_a_tree_and_only_those`.
+- 92 numbers: 87 from the old `apply_limits` (two of them the fruit's), 4 of the hull crown, 1 of the prism trunk.
+- Differential against the previous `apply_limits` (copied into a throwaway test, deleted): 40 166 cases (every numeric
+  field of the 20 presets and of a birch with fruit, autumn, blossom, a hull and a prism, each at 19 hostile values:
+  `NaN`, `inf`, `-inf`, `-1`, `1e30`, `-1e30`, `0`, `-0`, `1`, `0.5`, `2`, `63`, `65`, `255`, `65535`, `u32::MAX`, `1e-30`,
+  `7199`, `7201`), the same tree and the same "moved" answer in every one.
+- Cost of `sanitized()` (best of 20 x 50 000 calls, release, Apple M5, a clone included): the oak 277 ns against 219 ns
+  for clone and the old `apply_limits`; a tree with every part 223 against 141 ns. A `build_tree` makes two calls
+  (`pipeline.rs:34`, `skeleton_mesh`) and takes 29 µs (the dead tree) to 11.7 ms (the willow at maturity): at most 0.6%
+  of the cheapest, and the forest bench does not call it per frame.
+
 ## What great looks like
 
 An editor builds a slider for every number from `TreeParams::fields()` alone, labelled with its unit, and a typed
-`1e9` in the height box is refused with "`trunk.height` is held between 0 and 500 metres; 1000000000 is out of range"
+`1e9` in the height box is refused with "`trunk.height` is held between 0 m and 500 m; 1000000000 is out of range"
 before anything is written; `tree_edit` shrinks to a loop over `set` that calls `set_field` for numbers. A path typed
 wrong answers with the paths it is near. The same table keeps the generator's limits and the panel's in step because
 there is only one.

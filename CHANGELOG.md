@@ -7,6 +7,41 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
+A parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`).
+
+### Added
+
+- **`TreeParams::fields`, `ParamField`, `ParamKind`, `ParamUnit`, `TreeParams::field` and `set_field`, `ParamError`: the
+  range, unit and default of every number of a tree, and a checked edit** (`docs/research/param-fields.md`). The
+  editor that tunes a species (`bevy_dark_factory`'s `tree_edit`, F6) walks `serde_json::to_value(&TreeParams)` by dotted
+  path and writes any number it is given: `{"trunk.height": 1e9}` reached the file and `TreeParams::sanitized` quietly
+  drew a 500 m trunk, and nothing told a panel which numbers exist, what each is measured in or how far it may go.
+  `TreeParams::fields()` is now that list: 92 entries (trunk, branches, strands, splits, mesh, foliage, wind, bark,
+  growth, and the numbers of a fruit, a hull crown and a prism trunk), each with its dotted `path` (the serde form's:
+  `trunk.height`, `branches.strands.density`, `foliage.fruit.radius`, `crown.Hull.tiers`), `kind` (`Float` or `Count`),
+  `unit` (`Metres`, `Degrees`, `PerMetre`, `Age`, or `None` for a share, ratio or exponent; `unit.suffix()` writes it),
+  `min`, `max` and `default`; `ParamField::value(&params)` reads it (`None` while the tree has no fruit, hull or prism).
+  `TreeParams::set_field(path, value)` (and `ParamField::set`) takes a value only if `sanitized()` would leave it as it is
+  and refuses otherwise with a `ParamError` whose `Display` is a sentence to show: an unknown path (with the paths it is
+  near: `trunk.hieght` names `trunk.height`), a part the tree does not have, a `NaN` or infinite value, a count with a
+  fraction, or a value outside the range ("`trunk.height` is held between 0 m and 500 m; 1000000000 is out of range"). A
+  refusal changes nothing. The ranges are the hard limits `sanitized()` already applied, unchanged; colours, enums, flags,
+  the scans and the seed are not numbers in a range and stay with serde and reflection.
+
+### Changed
+
+- **The ranges are one table.** `TreeParams::sanitized` no longer lists 87 `l.float(...)`/`l.count(...)` lines: it walks
+  `TreeParams::fields()`, so the range a panel shows is the range the generator applies and there is no second copy to
+  drift (Epic's property metadata is the cautionary case: a range kept for the editor only). Checked against the previous
+  implementation over 40 166 hostile values (`NaN`, infinities, `-1`, `1e30`, `u32::MAX`, `-0.0`, either side of a bound,
+  in every numeric field of the 20 presets and of a tree with every part): the same tree and the same "moved" answer
+  every time. A call costs 277 ns for the oak (in range) where it cost 219 ns, 223 ns for a tree with every part where
+  it cost 141 ns (best of 20 x 50 000, Apple M5, a clone included in both), and a `build_tree` makes two calls
+  (`build_tree`, `skeleton_mesh`) and costs 29 µs (the dead tree) to 12 ms (the willow). The 526 gallery scenarios draw byte for byte as before. A new numeric
+  field of `TreeParams` needs a row in `build_fields`; the test
+  `the_catalogue_lists_every_number_of_a_tree_and_only_those` finds the fields by reflection and fails for one that is
+  missing.
+
 ## [0.47.1] - 2026-11-25
 
 A change of `TreeCondition` can be drawn as a decline over seconds (`docs/research/condition-glide.md`), a leaf that appears on a growing branch grows from nothing instead of popping in (`docs/research/leaf-ease-in.md`), and a preset is found by its name and a tree says when it is grown, what an editor and a game each wrote for themselves (`docs/research/preset-names.md`), and a tree is built from any parameters at all, in bounded time and memory, whatever a `.tree.ron` file or an editor's number field held (`docs/research/hostile-parameters.md`), and a tree file may be a `.tree.yaml`, the file the Grimoire editor saves a species in (`docs/research/tree-yaml.md`, issue #95).
