@@ -424,6 +424,16 @@ pub struct FoliageParams {
     pub leaf_size: f32,
     /// Random size variation (0–0.5).
     pub leaf_size_variation: f32,
+    /// How many leaves a strand ([`StrandParams`]) bears, as a share of [`density`](Self::density): a
+    /// long thin twig carries a row of leaves of its own spacing, not the rate of a branch (1 = as
+    /// every branch). Under [`FoliagePlacement::AllBranches`] a strand of length `l` has
+    /// `density * strand_density * l` leaves, before the height falloff.
+    pub strand_density: f32,
+    /// How long a strand's leaves are, as a share of [`leaf_size`](Self::leaf_size) (1 = as every
+    /// leaf): a row of many leaves is a row of small ones. A strand's leaves are cut as a
+    /// four-point lance whatever the scan, so a curtain of them costs a quarter of the triangles
+    /// a scanned card does.
+    pub strand_size: f32,
     /// Branches thicker than this fraction of the trunk radius get no leaves.
     pub radius_threshold: f32,
     /// Density falloff from the bottom to the top of the crown.
@@ -514,6 +524,8 @@ impl Default for FoliageParams {
             cluster_size: 4,
             leaf_size: 0.3,
             leaf_size_variation: 0.15,
+            strand_density: 1.0,
+            strand_size: 1.0,
             radius_threshold: 0.15,
             height_falloff: 0.3,
             droop: 0.2,

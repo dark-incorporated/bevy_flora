@@ -464,6 +464,8 @@ fn willow() -> TreeParams {
             cluster_size: 4,
             leaf_size: 0.34,
             leaf_size_variation: 0.25,
+            strand_density: 2.5,
+            strand_size: 0.7,
             radius_threshold: 0.15,
             height_falloff: 0.4,
             droop: 0.6,
