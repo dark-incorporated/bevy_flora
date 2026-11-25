@@ -1743,3 +1743,19 @@ after an edit took 3.5 to 4.5 minutes when idle and up to 18 minutes with anothe
 displayed the anchored line, a `forest` bench is unusable at load above 8 (check `uptime` first; the pool bench's single runs ranged
 15 to 29 ms cpu on one binary), `forest --mode gpu-live` does not finish here, and a build probe taken while a gallery runs is a
 probe of the load. `gh issue list` printed nothing and exited 0 (an empty list, not an error: `gh repo view` answered).
+
+**Merge and clean-up (iteration 16).** `loop/iter-16` pushed; merge `e5c3bb4` on `main` (`--no-ff`; `main` already held the
+research commit `b3f2d02`; `git diff loop/iter-16` is empty, so the merged tree is the branch's tree and the branch's gate is
+the merged tree's: nothing was re-run); `main` pushed (`7e4393b..e5c3bb4`). **No release:** v0.47.1 (tag 11:54) was 5 h 2 m old at
+the merge, the 6-hour rule; the next release is a minor one (`LeafPoint::strand` and three `FoliageParams` fields are new public
+fields) from 17:54 local on, and carries iterations 13 to 16 (`[Unreleased]` is written; `AGENTS.md`'s eleven clips are to be
+re-recorded then, `growth.gif` and `grove.gif` show the willow's old leaves only in the grove). No issue referenced or closed
+(none was open). Removed, mine: `/tmp/f16` (3.8 GB: the before and after release binaries of `gallery`, `forest`,
+`compare_gallery`, `inspect` and the probe, the 526- and 532-scenario galleries, the CPU and GPU parity and willow runs, the
+Sanctuary shallow clone, shots, bench output, findings, critique), the throwaway `examples/zz_probe.rs` (never committed), and from
+`~/target/flora-loop` the probe binaries (`release/examples/zz_probe*`, `debug/examples/zz_probe*`) and `package/bevy_flora-0.47.1*`.
+No worktree was made this pass. Kept: `~/target/flora-loop` (the warm `debug` and `release` builds). `df -h /`: 23 GB free at the
+start, 8.0 GB at the lowest, 12 GB after. Leftovers of earlier passes, listed and not touched: the worktree
+`/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at `42ec6a4`, with
+uncommitted changes to `.github/workflows/ci.yml`, `.omp/commands/build-loop.md` and `AGENTS.md` as in iteration 15: not a removal
+candidate), `wiggum/parked-pass-9-20261102-054127` (stale), and the branches `loop/iter-4` to `-16` (not deleted).
