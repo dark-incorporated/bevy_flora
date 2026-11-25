@@ -75,23 +75,29 @@ the fortieth leaf of a rope.
 
 ## Model adopted
 
-A strand's leaves differ from a branch's in three ways, all of them in `FoliageParams` (the leaf code reads
+A strand's leaves differ from a branch's in four ways, all of them in `FoliageParams` (the leaf code reads
 no other struct, so `leaf_points_for_node` keeps its signature):
 
 1. **Their own rate**: `strand_density`, a share of `density` (1 = as every branch, the default), so a strand
    of length `l` bears `density * strand_density * l * height_modifier` leaves under `AllBranches` (the budget
-   in `fit_leaves`, `leaf_bound`, and the GPU's `leaf_count` take the same number: one function, `leaf_amount`).
+   in `fit_leaves`, `leaf_bound`, and the GPU's `leaf_count` take the same number: one function, `leaf_rate`).
 2. **Their own size**: `strand_size`, a share of `leaf_size` (1 default). A row of many leaves is a row of
    small ones; the willow's leaf is 0.34 m on a 5 m tree because one leaf stood for a tuft.
-3. **A cheaper card**: a strand leaf is cut as a four-point lance, the base, the tip and the two widest points
-   of the scan's own outline (the nearest of the outline's points to those extremes), with the scan's atlas
-   coordinates, so it wears the same texture; without a scan, the procedural leaf's four corners. Both sides,
-   as every card: 8 vertices and 4 triangles, a quarter of the scanned card's. The flag is
-   `LeafPoint::strand`, set where the point is made, and it survives the coarse levels (`coarse_leaves` copies
-   the point).
+3. **Their own direction**: `strand_angle`, degrees out of line with the rope (0, the default, is the old
+   behaviour: every leaf hangs along it), to the side that the slot's turn round the rope says, the golden
+   angle from the leaf before (spiral phyllotaxis, Mirabet et al.). This is what makes a rope a ribbon: a
+   leaf hanging along its rope covers a leaf's width of a curtain whose ropes are half a metre apart (the
+   probe below: 3.2 times the leaves on the strands moved the lower third's coverage from 0.335 to 0.336),
+   one leaving it at 35 degrees covers a leaf's length times the sine of that on each side.
+4. **A cheaper card**: a strand leaf is cut as a four-point lance, the base, the tip and the two widest points
+   of the scan's own outline, with the scan's atlas coordinates, so it wears the same texture; without a scan,
+   the procedural leaf's four corners. Both sides, as every card: 8 vertices and 4 triangles, a quarter of the
+   scanned card's. The flag is `LeafPoint::strand`, set where the point is made, and it survives the coarse
+   levels (`coarse_leaves` copies the point).
 
-Leaf `i` of a strand keeps its place as the strand grows (`leaf-places.md`: slot, rank, flush) and the
-shaders and `GpuGrowth` already take whatever number of vertices a leaf has (`firsts`), so neither changes.
+Leaf `i` of a strand keeps its place as the strand grows (`leaf-places.md`: slot, rank, flush), its direction is
+a function of its slot, and the shaders and `GpuGrowth` already take whatever number of vertices a leaf has
+(`firsts`), so neither changes.
 
 ## Parameters
 
@@ -99,6 +105,7 @@ shaders and `GpuGrowth` already take whatever number of vertices a leaf has (`fi
 |---|---|---|---|---|
 | `foliage.strand_density` | 1.0 | to be set against the targets | 0 to 16 | share of `density` a strand's leaves have |
 | `foliage.strand_size` | 1.0 | to be set against the targets | 0 to 8 | share of `leaf_size` a strand's leaves have |
+| `foliage.strand_angle` | 0.0 | to be set against the targets | 0 to 90 | degrees a strand's leaves point out of line with it |
 
 ## Validation targets
 
@@ -106,9 +113,9 @@ shaders and `GpuGrowth` already take whatever number of vertices a leaf has (`fi
    `stats.tsv` columns 1-10 (a strand leaf flag is the only new state, and it is false there).
 2. **Coverage, measured independently of the generator** (a throwaway probe rasterises every triangle of the
    willow's meshes on a 256 x 256 grid over the lower third of the crown's box, from the front and the side,
-   and counts the cells a triangle covers): the lower third of the mature willow is covered over at least half
-   of its area from both views at level 0, and the same, within 10 points, at levels 1 and 2 (the coarse
-   levels keep every third and every eighth leaf but scale them up). Baseline in 0.47.1 (mature willow, seed 42,
+   and counts the cells a triangle covers): the lower third of the mature willow is covered over at least 0.45
+   of its area from both views at level 0 (1.4 times the baseline below), and the same, within 10 points, at
+   levels 1 and 2 (the coarse levels keep every third and every eighth leaf but scale them up). Baseline in 0.47.1 (mature willow, seed 42,
    the crown's box 8.9 x 5.2 x 10.8 m, `examples/zz_probe.rs`, deleted before the commit): lower third covered
    0.335 from the front and 0.271 from the side at level 0, 0.285 and 0.234 at level 1, 0.302 and 0.228 at
    level 2; the middle third 0.406 and 0.365 at level 0. A fence: two thirds of the curtain is open sky.
