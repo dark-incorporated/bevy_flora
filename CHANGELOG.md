@@ -164,6 +164,18 @@ A change of `TreeCondition` can be drawn as a decline over seconds (`docs/resear
 
 ### Tests
 
+- `tree_asset.rs` (`yaml`): `every_preset_survives_a_yaml_tree_file` (all 20 presets, `from_yaml(to_yaml(p)) == p`),
+  `a_hull_crown_and_a_prism_trunk_survive_a_yaml_tree_file_as_tags_and_a_file_may_leave_them_out`,
+  `a_yaml_tree_file_may_leave_fields_out_but_not_misspell_them` (the error names the field and `line 3`),
+  `a_yaml_tree_file_is_read_as_the_generator_can_draw_it` (`.nan` and `1e9` read as written, held in range by
+  `sanitized()`), `text_that_is_not_a_tree_is_an_error_at_once` (an alias bomb, 10 000 levels of nesting, two
+  documents, a sequence for a struct, a NUL and a list, in under two seconds together),
+  `an_empty_yaml_file_is_not_a_default_tree` (nothing, whitespace, a comment, `null`, `~`, `---`; `{}` is the
+  defaults), `a_tree_is_the_same_tree_in_yaml_and_in_ron` (every preset through both formats, and the two example
+  files), `the_example_yaml_tree_file_loads`, and
+  `the_asset_server_loads_a_tree_yaml_file_and_says_where_a_bad_one_is_wrong` (a real `AssetServer` over a
+  temporary folder: a `.tree.yaml` becomes the preset it was written from and the `ProceduralTreeAsset` tree
+  follows it, a misspelt one fails with its field and line, and a `.tree.ron` loads in the same app).
 - `limits.rs`: `every_preset_and_the_default_are_inside_every_range` (and says which fields if one is not),
   `every_numeric_field_is_limited` (all 107 numeric fields found by reflection, so a field added later is
   covered, each at `NaN`, both infinities and `±1e30`: finite and inside any range afterwards),
