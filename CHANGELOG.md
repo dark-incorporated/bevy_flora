@@ -7,6 +7,8 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
+## [0.47.1] - 2026-11-25
+
 A change of `TreeCondition` can be drawn as a decline over seconds (`docs/research/condition-glide.md`), a leaf that appears on a growing branch grows from nothing instead of popping in (`docs/research/leaf-ease-in.md`), and a preset is found by its name and a tree says when it is grown, what an editor and a game each wrote for themselves (`docs/research/preset-names.md`), and a tree is built from any parameters at all, in bounded time and memory, whatever a `.tree.ron` file or an editor's number field held (`docs/research/hostile-parameters.md`), and a tree file may be a `.tree.yaml`, the file the Grimoire editor saves a species in (`docs/research/tree-yaml.md`, issue #95).
 
 ### Added
@@ -3167,7 +3169,8 @@ The first release.
   four-view renders and per-scenario statistics for visual QA) and `capture_growth` (the README
   clip).
 
-[Unreleased]: https://github.com/Ladvien/bevy_flora/compare/v0.47.0...HEAD
+[Unreleased]: https://github.com/Ladvien/bevy_flora/compare/v0.47.1...HEAD
+[0.47.1]: https://github.com/Ladvien/bevy_flora/compare/v0.47.0...v0.47.1
 [0.47.0]: https://github.com/Ladvien/bevy_flora/compare/v0.46.1...v0.47.0
 [0.46.1]: https://github.com/Ladvien/bevy_flora/compare/v0.46.0...v0.46.1
 [0.46.0]: https://github.com/Ladvien/bevy_flora/compare/v0.45.0...v0.46.0
