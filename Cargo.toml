@@ -58,6 +58,8 @@ file_watcher = ["bevy/file_watcher"]
 
 [dev-dependencies]
 bevy = { version = "0.20" }
+# The tests read the dotted paths of `TreeParams::fields` out of the serde form, as an editor's `set` map does.
+serde_json = "1"
 
 [[example]]
 name = "tree_file"
