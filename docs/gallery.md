@@ -28,6 +28,14 @@ that explains it, and `docs/media/README.md` gives every file its command, captu
 
 *The same oak at level 0 (25 m), level 1 (33 m) and level 2 (91 m), each zoomed to the same size.*
 
+## [How a tree looks](guide/appearance.md)
+
+### A willow's curtain: the leaves of a strand
+
+![The willow preset at 14 m: left as 0.47.1 drew it, a fence of pale wires with a leaf now and then and the bare sky behind; right with the leaves of its strands out of line with their ropes, a leafy curtain that hangs to the grass](media/willow.jpg)
+
+*`cargo run --release --example inspect -- --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20`: left, the 0.47.1 binary; right, with `FoliageParams::strand_density`, `strand_size` and `strand_angle` set as the preset sets them.*
+
 ## [Forests](guide/forests.md)
 
 ### Planting a forest: `Scatter`
