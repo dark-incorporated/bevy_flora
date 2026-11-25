@@ -502,8 +502,12 @@ pub use shading::{
 };
 pub use shape::{TreeShape, WoodCapsule};
 pub use tree_asset::ProceduralTreeAsset;
+#[cfg(any(feature = "ron", feature = "yaml"))]
+pub use tree_asset::TreeFileError;
 #[cfg(feature = "ron")]
-pub use tree_asset::{TreeFileError, TreeParamsLoader};
+pub use tree_asset::TreeParamsLoader;
+#[cfg(feature = "yaml")]
+pub use tree_asset::TreeParamsYamlLoader;
 pub use units::FloraUnits;
 pub use skeleton::{Node, NodeKind, Skeleton, generate_skeleton};
 
