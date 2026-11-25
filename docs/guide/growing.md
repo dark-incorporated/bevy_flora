@@ -4,7 +4,7 @@ How a tree changes with age, from the CPU rebuild to the vertex shader, and how 
 
 ## Trees from files: `ProceduralTreeAsset` and `.tree.ron`
 
-`TreeParams` is an asset. Spawn `ProceduralTreeAsset(handle)` in place of `ProceduralTree(params)` and the plugin gives the entity its `ProceduralTree` once the asset has loaded, and replaces it whenever the asset changes, so every tree that shares the handle follows an edit, made in code (`Assets<TreeParams>::get_mut`), in an inspector (the asset is registered for reflection) or in a file. With the `ron` feature the plugin loads `.tree.ron` files, and with Bevy's `file_watcher` (this crate's `file_watcher` feature turns it on) saving one rebuilds its trees while the game runs, a few tenths of a second after the save: tune a tree without recompiling. `TreeParams::to_ron` writes any tree as a file to start from (`cargo run --example tree_file --features ron -- --export oak`). A file may leave fields out, which keep their defaults; a misspelt field is an error that gives the line and the fields that exist; and a file that fails to load keeps the last good tree.
+`TreeParams` is an asset. Spawn `ProceduralTreeAsset(handle)` in place of `ProceduralTree(params)` and the plugin gives the entity its `ProceduralTree` once the asset has loaded, and replaces it whenever the asset changes, so every tree that shares the handle follows an edit, made in code (`Assets<TreeParams>::get_mut`), in an inspector (the asset is registered for reflection) or in a file. With the `ron` feature the plugin loads `.tree.ron` files, with the `yaml` feature `.tree.yaml` files (the two features are independent), and with Bevy's `file_watcher` (this crate's `file_watcher` feature turns it on) saving one rebuilds its trees while the game runs, a few tenths of a second after the save: tune a tree without recompiling. `TreeParams::to_ron` and `to_yaml` write any tree as a file to start from (`cargo run --example tree_file --features ron -- --export oak`, with `--features ron,yaml` and `--yaml` for the YAML). A file may leave fields out, which keep their defaults; a misspelt field is an error that gives the line and the fields that exist; and a file that fails to load keeps the last good tree.
 
 ```rust,no_run
 use bevy::prelude::*;
@@ -31,6 +31,21 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
 *`cargo run --release --example tree_file --features ron` (add `file_watcher` to rebuild on save): left, `examples/assets/trees/maple.tree.ron` as exported; right, the same file with the branch density raised from 3 to 7, the leaf density from 4.5 to 7 and the leaf colour lightened.*
 
 Pools are built from a value (`build_pool(assets.get(&handle).unwrap(), ..)`), so a pool does not follow later edits to the asset.
+
+### `.tree.yaml`: the file the Cauldron saves
+
+[The Cauldron](https://github.com/bevy-coven/bevy_grimoire) saves a species as `trees/<name>.tree.yaml`, and the `yaml` feature (`serde_yaml_ng` 0.10, the editor's own version, and no `ron`) loads it in the game: `assets.load("trees/old_oak.tree.yaml")` is a `Handle<TreeParams>` for `ProceduralTreeAsset` exactly as the `.tree.ron` one above, and `TreeParams::from_yaml(text)` / `to_yaml()` read and write the same text for code that holds it. The text is `serde_yaml_ng`'s for the type, so what either side wrote reads on the other:
+
+```yaml
+seed: 42
+trunk:
+  height: 8.0
+  termination: LeaderBranch
+style: Natural
+crown: !Hull {tiers: 5, sides: 7, lift: 0.1, jitter: 0.5, trunk_only: false}
+```
+
+Fields left out take their defaults and a misspelt one is an error with its line, ``trunk: unknown field `hieght`, expected one of `height`, `radius`, ... at line 3 column 3``. A style that carries fields is a YAML tag (`!Hull`, `!Prism`), one that carries none is its name; only `true` and `false` are booleans (`yes` is an error). The forms `serde_yaml_ng` does not read for an enum, such as `crown: {Hull: {...}}`, are refused. A file with nothing in it is an error, not a tree of all defaults (`{}` is that), so a file watcher that reads a file between an editor's truncate and its write keeps the tree as it was.
 
 ### A file can say anything: `TreeParams::sanitized`
 

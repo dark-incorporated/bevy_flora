@@ -36,6 +36,9 @@ all-features = true
 bevy = { version = "0.20", default-features = false, features = ["std", "bevy_asset", "bevy_color", "bevy_log", "bevy_mesh", "bevy_pbr", "jpeg"] }
 serde = { version = "1", features = ["derive"], optional = true }
 ron = { version = "0.12", optional = true }
+# The version bevy_dark_factory (the Grimoire editor) reads and writes project files with, so a game that
+# depends on both resolves one copy.
+serde_yaml_ng = { version = "0.10", optional = true }
 
 [features]
 default = ["textures"]
@@ -46,8 +49,11 @@ serde = ["dep:serde"]
 # `.tree.ron` files: an asset loader for `TreeParams`, and `TreeParams::to_ron` / `from_ron`.
 # `ron` is already in Bevy's dependency graph (`bevy_asset` reads `.meta` files with it).
 ron = ["serde", "dep:ron"]
-# Bevy's `file_watcher`: assets reload when their files are saved, so `.tree.ron` trees rebuild
-# (the `tree_file` example). Not on by default: with it, an app without an `assets` folder warns.
+# `.tree.yaml` files: an asset loader for `TreeParams`, and `TreeParams::to_yaml` / `from_yaml`. Independent
+# of `ron`: a game that reads YAML compiles no RON.
+yaml = ["serde", "dep:serde_yaml_ng"]
+# Bevy's `file_watcher`: assets reload when their files are saved, so `.tree.ron` and `.tree.yaml` trees
+# rebuild (the `tree_file` example). Not on by default: with it, an app without an `assets` folder warns.
 file_watcher = ["bevy/file_watcher"]
 
 [dev-dependencies]

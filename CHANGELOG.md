@@ -7,9 +7,25 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
-A change of `TreeCondition` can be drawn as a decline over seconds (`docs/research/condition-glide.md`), a leaf that appears on a growing branch grows from nothing instead of popping in (`docs/research/leaf-ease-in.md`), and a preset is found by its name and a tree says when it is grown, what an editor and a game each wrote for themselves (`docs/research/preset-names.md`), and a tree is built from any parameters at all, in bounded time and memory, whatever a `.tree.ron` file or an editor's number field held (`docs/research/hostile-parameters.md`).
+A change of `TreeCondition` can be drawn as a decline over seconds (`docs/research/condition-glide.md`), a leaf that appears on a growing branch grows from nothing instead of popping in (`docs/research/leaf-ease-in.md`), and a preset is found by its name and a tree says when it is grown, what an editor and a game each wrote for themselves (`docs/research/preset-names.md`), and a tree is built from any parameters at all, in bounded time and memory, whatever a `.tree.ron` file or an editor's number field held (`docs/research/hostile-parameters.md`), and a tree file may be a `.tree.yaml`, the file the Grimoire editor saves a species in (`docs/research/tree-yaml.md`, issue #95).
 
 ### Added
+
+- **`.tree.yaml` files: the `yaml` feature, `TreeParamsYamlLoader`, `TreeParams::to_yaml` and `from_yaml`**
+  (`docs/research/tree-yaml.md`, issue #95, `consumer:bevy_dark_factory`). The Grimoire editor moved every project
+  file from RON to YAML and writes a species as `trees/<name>.tree.yaml` through this crate's serde derives, which a
+  game could not load. `asset_server.load("trees/oak.tree.yaml")` is now a `Handle<TreeParams>` (registered by the
+  plugin beside the RON loader) that `ProceduralTreeAsset` draws, that every tree sharing it follows, and that
+  rebuilds when the file is saved (with `file_watcher`); `TreeParams::to_yaml()` and `TreeParams::from_yaml(&str)`
+  write and read the same text for code that holds it. The text is exactly `serde_yaml_ng::to_string` of the type
+  (`serde_yaml_ng` 0.10, the editor's own version, so one copy resolves), so a file either side wrote reads on the
+  other: a crown or trunk style that carries fields is a YAML tag (`crown: !Hull {tiers: 5, ...}`), floats are the
+  shortest text that reads back as the same `f32`, a field left out takes its default and a misspelt one is an error
+  with its line and the fields that exist. The feature is independent of `ron`: a game that reads YAML compiles no
+  RON. `TreeFileError` is now the error of both formats and is exported under either feature (it was under `ron`
+  only); `TreeParamsLoader` and the RON functions are unchanged. `examples/assets/trees/maple.tree.yaml` is the
+  example's tree in YAML, and `tree_file` takes `--tree <path>.tree.yaml` and `--export <preset> --yaml`. CI builds
+  `--features yaml` and `--features ron` on their own.
 
 - **`ConditionGlide { seconds }`: a change of `TreeCondition` can be drawn as a decline** over seconds, not
   in the frame after it is set (`docs/research/condition-glide.md`, backlog 2 of iterations 6 to 9). A
