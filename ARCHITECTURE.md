@@ -33,6 +33,15 @@ recursive branch checks it before each node) and `MAX_LEAVES` (`fit_leaves` drop
 `leaf_count` reads too, since it is the same `distributed_leaf_amount`). `PinSpheres` (smoothing's pinned wood) coarsens
 its grid for wide wood, because a sphere covers cells as the cube of its radius.
 
+**One table of ranges** (`limits.rs`). The range of every number of a `TreeParams` is one row of a table, `TreeParams::fields()`
+(`ParamField`: dotted serde `path`, `ParamKind`, `ParamUnit`, `min`, `max`, `default`, and two private accessors, one that
+reads the number and one that hands out `&mut` to it, `None` while the part, a fruit, a hull crown or a prism trunk, is
+not set). `sanitized()` walks the table, reading each number and writing only one that is out of range, and then the
+colours (the one rule that is not a range); `ParamField::set` and `TreeParams::set_field` refuse what `sanitized()` would
+have to change. Epic's property metadata keeps the editor's range apart from the game's and the two drift; here the panel
+and the generator read the one row. The test `the_catalogue_lists_every_number_of_a_tree_and_only_those` finds the
+numeric fields by reflection and fails for a number the table lacks, so a new `f32` or `u32` field of `TreeParams` needs a row.
+
 ## Growth model
 
 Progress is linear. A primary is born when the trunk reaches its attachment
