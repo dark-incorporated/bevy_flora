@@ -555,11 +555,79 @@ mod tests {
 
     #[cfg(feature = "yaml")]
     #[test]
+    fn saving_a_tree_yaml_file_rebuilds_its_trees_and_a_save_that_does_not_read_leaves_them() {
+        use bevy::asset::{AssetServer, LoadState};
+
+        let dir = std::env::temp_dir().join(format!("bevy_flora_tree_yaml_resave_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("old_oak.tree.yaml");
+        let (oak, birch) = (TreePreset::Oak.params(), TreePreset::Birch.params());
+        std::fs::write(&path, oak.to_yaml()).unwrap();
+
+        let mut app = app_reading(dir.to_string_lossy().into_owned());
+        let server = app.world().resource::<AssetServer>().clone();
+        let handle: Handle<TreeParams> = server.load("old_oak.tree.yaml");
+        let trees: Vec<Entity> =
+            (0..2).map(|_| app.world_mut().spawn(ProceduralTreeAsset(handle.clone())).id()).collect();
+        let drawn = |app: &App, want: &TreeParams| {
+            trees.iter().all(|&tree| app.world().get::<ProceduralTree>(tree) == Some(&ProceduralTree(want.clone())))
+        };
+        let pump_until = |app: &mut App, mut done: Box<dyn FnMut(&App) -> bool + '_>| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while std::time::Instant::now() < deadline {
+                app.update();
+                if done(app) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            panic!("the asset server did not settle: {:?}", server.get_load_state(&handle));
+        };
+
+        pump_until(&mut app, Box::new(|app| drawn(app, &oak)));
+
+        // The editor saves another tree over it: every tree of the handle follows.
+        std::fs::write(&path, birch.to_yaml()).unwrap();
+        server.reload("old_oak.tree.yaml");
+        pump_until(&mut app, Box::new(|app| drawn(app, &birch)));
+
+        // A save with a typo and one with nothing in it fail to read and leave the trees as they were.
+        for text in ["seed: 7\ntrunk:\n  hieght: 9.0\n", ""] {
+            std::fs::write(&path, text).unwrap();
+            server.reload("old_oak.tree.yaml");
+            pump_until(
+                &mut app,
+                Box::new(|_| matches!(server.get_load_state(&handle), Some(LoadState::Failed(_)))),
+            );
+            app.update();
+            assert!(drawn(&app, &birch), "a file that does not read changed the trees ({text:?})");
+
+            // The next good save is followed again.
+            std::fs::write(&path, oak.to_yaml()).unwrap();
+            server.reload("old_oak.tree.yaml");
+            pump_until(&mut app, Box::new(|app| drawn(app, &oak)));
+            std::fs::write(&path, birch.to_yaml()).unwrap();
+            server.reload("old_oak.tree.yaml");
+            pump_until(&mut app, Box::new(|app| drawn(app, &birch)));
+        }
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(feature = "yaml")]
+    #[test]
     fn an_empty_yaml_file_is_not_a_default_tree() {
         for text in ["", "  \n\n", "# nothing here yet\n", "null", "~", "---\n"] {
             let error = TreeParams::from_yaml(text).unwrap_err().to_string();
             assert!(error.contains("empty"), "{text:?}: {error}");
         }
         assert_eq!(TreeParams::from_yaml("{}").unwrap(), TreeParams::default());
+
+        // What `to_yaml` writes for a value the generator cannot draw reads back as it was.
+        let mut odd = TreeParams::default();
+        odd.trunk.height = f32::NAN;
+        odd.trunk.radius = f32::INFINITY;
+        let back = TreeParams::from_yaml(&odd.to_yaml()).unwrap();
+        assert!(back.trunk.height.is_nan() && back.trunk.radius == f32::INFINITY);
     }
 }
