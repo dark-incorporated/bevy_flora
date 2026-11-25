@@ -72,6 +72,10 @@ what it rests on; this file only says what exists. Newest additions last in each
   `catalog_recent` 2026-10-31). The 2015 to 2025 "Advances" notes (`s20NN-advances-*`) were indexed the
   same day; `distill_search` finds no other vegetation talk in them.
 
+- `10.1093_treephys_tpaa058`: Dox et al. 2020, "Timeline of autumn phenology in temperate deciduous trees" (onset of foliar
+  senescence of beech "in mid-late October" and of birch "in late September to mid-October" at 51 degrees N; listed
+  2026-11-25 when `FloraSeason::of_date` was weighed and dropped, `docs/research/point-grid.md`).
+
 ## Tree condition and mortality (issue #87)
 
 - `10.1038_s41467-020-18996-3`: "Tree mode of death and mortality risk factors across Amazon
@@ -199,3 +203,16 @@ what it rests on; this file only says what exists. Newest additions last in each
   `TypeInfo`).
 - The last 200 `catalog_recent` events were re-read on 2026-11-25 (the same 2026-11-17 to 2026-11-20 window as
   iteration 13: no new tree, plant, foliage, phenology, fire, impostor, wind or felling document).
+
+## Placement rules and keeping clear (`PointGrid`)
+
+- `10.1145_3502220`: Benes et al. 2022, "Procedural Urban Forestry" (planting rules are distances: "Poisson-disc distribution
+  (minimal distance requirement) among plants and from the building envelope"; already listed above).
+- `10.1890_1051-0761(2006)016[0540:naoctc]2.0.co;2`: Canham et al. 2006, "Neighborhood analyses of canopy tree competition
+  along environmental gradients in New England forests" (a neighbourhood is a radius, 3.2 to 19.8 m for adult trees, and the
+  radius belongs to the target species).
+- `10.1111_cgf.12276`: a survey of procedural modelling for virtual worlds (the layers of a world interact: "the execution of
+  each pm method might have to take into account the location, type and properties of other features"; the catalog title is
+  empty).
+- `book_real_time_collision_detection_ericson`: Ericson (hashed grids; listed above).
+- Web, not indexed: Bridson 2007, "Fast Poisson Disk Sampling in Arbitrary Dimensions" (the background grid `scatter.rs` uses).
