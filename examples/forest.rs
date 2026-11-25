@@ -125,7 +125,7 @@ use bevy_flora::{
     BackgroundPools, BuildInBackground, FloraFire, FloraGround, FloraPlugin, FloraSeason, FloraShadows, FloraWetness, FloraWind,
     FoliagePusher,
     GpuGrowth, Growing,
-    GustFront, LodDistances, LodSettings, PoolColors, PooledLook, PooledTree, ProceduralTree, RecolorPool, RenderStyle,
+    GustFront, LodDistances, LodSettings, PointGrid, PoolColors, PooledLook, PooledTree, ProceduralTree, RecolorPool, RenderStyle,
     Scatter, SeededRng, SeeThroughTrees, TreeAge, TreeCondition, TreeLod, TreeParams, TreePool, TreePreset, TreeShake, TreeShakes,
     build_pool,
 };
@@ -1001,23 +1001,9 @@ fn terrain_mesh(ground: &FloraGround, side: f32) -> Mesh {
 fn placements(args: &Args, ground: &FloraGround) -> (Vec<(Transform, usize, u32)>, f32) {
     let (mut trees, extent) = tree_placements(args, ground);
     let Some((shrub, spacing)) = args.undergrowth else { return (trees, extent) };
-    // Trunks by 2 m cell, so a shrub looks at the nine cells around it only.
-    const CELL: f32 = 2.0;
     const TRUNK_CLEARANCE: f32 = 1.5;
-    let cell = |p: Vec2| ((p.x / CELL).floor() as i32, (p.y / CELL).floor() as i32);
-    let mut trunks: std::collections::HashMap<(i32, i32), Vec<Vec2>> = Default::default();
-    for (transform, ..) in &trees {
-        let at = transform.translation.xz();
-        trunks.entry(cell(at)).or_default().push(at);
-    }
-    let near_a_trunk = |at: Vec2| {
-        let (cx, cz) = cell(at);
-        (cx - 1..=cx + 1).any(|x| {
-            (cz - 1..=cz + 1).any(|z| {
-                trunks.get(&(x, z)).is_some_and(|ps| ps.iter().any(|p| p.distance(at) < TRUNK_CLEARANCE))
-            })
-        })
-    };
+    let trunks: PointGrid = trees.iter().map(|(transform, ..)| transform.translation.xz()).collect();
+    let near_a_trunk = |at: Vec2| trunks.near(at, TRUNK_CLEARANCE);
     let species = args.scatter.as_ref().map_or(1, Vec::len);
     let half = extent * 0.5;
     let clearing = args.clearing * 0.75;
