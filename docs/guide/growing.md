@@ -45,7 +45,7 @@ style: Natural
 crown: !Hull {tiers: 5, sides: 7, lift: 0.1, jitter: 0.5, trunk_only: false}
 ```
 
-Fields left out take their defaults and a misspelt one is an error with its line, ``trunk: unknown field `hieght`, expected one of `height`, `radius`, ... at line 3 column 3``. A style that carries fields is a YAML tag (`!Hull`, `!Prism`), one that carries none is its name; only `true` and `false` are booleans (`yes` is an error). The forms `serde_yaml_ng` does not read for an enum, such as `crown: {Hull: {...}}`, are refused. A file with nothing in it is an error, not a tree of all defaults (`{}` is that), so a file watcher that reads a file between an editor's truncate and its write keeps the tree as it was.
+Fields left out take their defaults and a misspelt one is an error with its line, ``trunk: unknown field `hieght`, expected one of `height`, `radius`, ... at line 3 column 3``. A style that carries fields is a YAML tag (`!Hull`, `!Prism`), one that carries none is its name; only `true` and `false` are booleans (`yes` is an error). The forms `serde_yaml_ng` does not read for an enum, such as `crown: {Hull: {...}}`, are refused. A file with nothing in it is an error, not a tree of all defaults (`{}` is that), so a file watcher that reads a file between an editor's truncate and its write keeps the tree as it was. That guard catches an empty file only: YAML written in blocks stays valid when it is cut at a line, so a tool that saves a tree file should write a temporary file and rename it over the old one, as the Cauldron does. A save that does not read, or one with nothing in it, leaves every tree of the handle as it was, and the next good save is followed again.
 
 ### A file can say anything: `TreeParams::sanitized`
 
