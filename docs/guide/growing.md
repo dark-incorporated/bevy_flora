@@ -53,6 +53,29 @@ A `.tree.ron` is typed by a person, and an editor's number field passes through 
 
 What the ranges allow can still multiply to more wood or leaves than any tree has, so a tree has at most `MAX_NODES` (5 000) branches and `MAX_LEAVES` (60 000) leaves: generation stops adding wood at the first and drops the last nodes (the top of the crown) to fit the second. The 20 presets have at most 588 nodes and 4 630 leaves, the gallery's 40 m giant oak 893 nodes and about 21 000. The worst tree the ranges allow, a 500 m trunk with 5 000 branches or one with 20 000 leaves, builds in about a second and about 300 MB on an Apple M5, where unbounded parameters hung the build or ran the machine out of memory.
 
+### A panel for it: `TreeParams::fields` and `set_field`
+
+A tool that edits a species needs to know, for every number, what it is, what it is measured in and what range it may take, and `sanitized()` only clamps what arrives. `TreeParams::fields()` lists every number of a tree (92 of them: trunk, branches, strands, splits, mesh, foliage, wind, bark, growth, and the numbers of a fruit, a hull crown and a prism trunk when the tree has them) as a `ParamField`: its dotted `path` (the serde form's, `trunk.height`, `branches.strands.density`, `crown.Hull.tiers`), a `kind` (`Float` or `Count`), a `unit` (`Metres`, `Degrees`, `PerMetre`, `Years`, or `None` for a share, ratio or exponent: `unit.suffix()` is how a panel writes it), the `min` and `max` the generator holds it in and its `default`. The range is the one `sanitized()` applies, from one table, so a panel and the generator cannot disagree. It is the hard limit, wide on purpose, not a sensible slider range: a panel that wants one takes it from the presets it ships.
+
+```rust
+use bevy_flora::{ParamError, TreeParams, TreePreset};
+
+let mut oak = TreePreset::Oak.params();
+for field in TreeParams::fields().iter().take(3) {
+    // A slider per number: where it is now, and what it may be.
+    let now = field.value(&oak).expect("the first numbers are a trunk's");
+    println!("{}: {now}{} in {}..={}", field.path, field.unit.suffix(), field.min, field.max);
+}
+// An edit outside the range is refused before anything changes, with a sentence to show.
+let refused = oak.set_field("trunk.height", 1e9).expect_err("1e9 m is not a tree");
+assert!(matches!(refused, ParamError::OutOfRange { .. }));
+println!("{refused}"); // `trunk.height` is held between 0 m and 500 m; 1000000000 is out of range
+oak.set_field("trunk.height", 12.0).expect("12 m is a tree");
+assert_eq!(oak.field("trunk.height"), Some(12.0));
+```
+
+`set_field(path, value)` refuses with a `ParamError`: an unknown path (naming the paths it is near, so `trunk.hieght` answers `trunk.height`), a part the tree does not have (the radius of a fruit on a tree that bears none: set `foliage.fruit` first), a `NaN` or infinite value, a count with a fraction, a value outside the range. A refusal changes nothing, and a value it takes is one `sanitized()` leaves as it is. A count travels as an `f32` (the largest is 256). Colours, enums, flags, the scans and the seed are not numbers in a range and stay with serde and reflection.
+
 ## Growing many trees: `GpuGrowth`
 
 A growing tree normally rebuilds both meshes every frame, 0.1 to 0.4 ms of CPU per tree. Add `GpuGrowth` and the tree is built once, at maturity, and grown in the vertex shader: each frame the plugin ages the skeleton and writes a few kilobytes of per-node state, and nothing else is uploaded.
