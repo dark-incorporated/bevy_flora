@@ -473,7 +473,7 @@ pub use harvest::{FallenFruit, FallingFruit, Fruit, FruitFell, TreeFruit};
 pub use condition::{ConditionGlide, TreeCondition};
 pub use index::{FloraIndex, IndexedTree, Obstacle, ObstacleKind, TreeHit};
 pub use impostor::{IMPOSTOR_VIEWS, ImpostorAtlas, ImpostorMaterial, ImpostorTint};
-pub use limits::{MAX_LEAVES, MAX_NODES};
+pub use limits::{MAX_LEAVES, MAX_NODES, ParamError, ParamField, ParamKind, ParamUnit};
 pub use lod::{LodDistances, LodSettings, TreeLod, build_lods};
 pub use mesh::MeshData;
 pub use params::{

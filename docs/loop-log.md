@@ -1329,3 +1329,131 @@ and the docs tool's). Leftover of someone else's, listed and not touched: the wo
 at `42ec6a4`, which is on `origin/main`, with uncommitted changes to `.github/workflows/ci.yml`,
 `.omp/commands/build-loop.md` and `AGENTS.md`: not clean, so not a removal candidate). The branches `loop/iter-4` to `-13`
 remain, not deleted.
+
+## Iteration 14 — 2026-11-25 — What a parameter panel needs from `TreeParams`: `fields`, `field`, `set_field` (the range, unit and default of every number, and a checked edit)
+
+Pass on `loop/iter-14` from `main` `0a38c59`, Apple M5 (Metal, macOS 26.6.2), host `mac_air`, load 8 to 14 (other loops
+build here). Home-still at the start: `system_status` healthy (19 543 documents, 19 387 embedded, scribe `ok` on the
+RTX 3090), `distill_search` worked. `catalog_recent` (200) is the same window as iteration 13 (2026-11-17 to 11-20; no
+tree, plant, foliage, phenology, fire, impostor, wind or felling document): no corpus commit for it.
+
+**Triage.** `gh issue list` on this repository: 0 open (also through `gh api .../issues?state=open`: 0; last closed
+#95). Searching Dark Incorporated's open issues for `flora` finds only `bevy_dark_factory#622` (the label name of an
+upstream request, a docs question that does not touch this crate). bevy_grimoire's F6 (`#102`) is closed. One parked
+branch, `wiggum/parked-pass-9-20261102-054127` (`a9d3988`, one file): its item (hostile parameters) is on `main`
+(`9be4bc4`, `8637dee`), so it is stale and ignored. `git log origin/main..HEAD` empty at the start. No bug and no issue
+to take, so section 4's first fallback applies. Release: `v0.47.1` was tagged 11:55 and this pass started at 12:20, so
+the 6-hour rule forbids one; the change rides in the next release (`[Unreleased]` is written).
+
+**What changed and why it ranked first.** Read the consumers (`bevy_dark_factory/.../ops_tree.rs`, `forest_season.rs`,
+Sanctuary's `prototype/trees.rs`). The editor's `tree_edit` walks `serde_json::to_value(&TreeParams)` by dotted path and
+accepts any number: `{"trunk.height": 1e9}` reached the file and `sanitized()` quietly drew a 500 m trunk, and nothing
+told a panel which numbers exist, what each is measured in or how far it may go (iteration 11 and 13 left this at the top
+of their backlogs, "wait for the requester"; none filed it). Built the general form, in `limits.rs`:
+
+- **One table of 92 rows** (dotted serde path, `ParamKind`, `ParamUnit`, `min`, `max`, `default`, a reader and a writer) that
+  `TreeParams::sanitized` now walks (the 87 `l.float/l.count` lines are gone), so the range a panel shows is the range the
+  generator applies.
+- `TreeParams::fields()`, `field(path)`, `set_field(path, value)`, `ParamField::{value, holds, set}`, `ParamError`
+  (`Unknown` with the nearest paths, `Absent`, `NotFinite`, `NotWhole`, `OutOfRange`): `set_field` takes a value only
+  if `sanitized()` would leave it as it is; a refusal changes nothing and its `Display` is a sentence to show ("`trunk.height`
+  is held between 0 m and 500 m; 1000000000 is out of range"). No default, preset or range moved; nothing that draws changed.
+
+Candidates, ranked: (1) this; (2) **`FloraSeason::of_date`**: the editor's `forest_season::season_for` hand-writes "day of
+year, hemisphere, 1 March, a magic 60" to turn a calendar date into `FloraSeason::of_year`; a four-line general form
+(next pass); (3) a glide with no per-tree cost (iteration 11/13 backlog); (4) the hull crown by leaf size; (5) the
+willow (D-052). (1) beat (2) because it removes a silent wrong-write in the owner's editor and is the larger gap; (2) is
+smaller and rides well with it.
+
+**Assumed decisions** (owner may override; no issue to record them on, so here, in the commit body and in
+`docs/research/param-fields.md`): numbers only (enums, colours, flags and the seed stay with serde and reflection; a
+full `ParamValue` with a reflection-driven `set` would be a second editing path beside the editor's serde one);
+`f32` for every value, a count included (counts top out at 256); the names `ParamField`, `ParamKind`, `ParamUnit`,
+`ParamError`, `TreeParams::{fields, field, set_field}`; the hull (5 tiers, 7 sides) and prism (5 sides) defaults are
+design defaults; **assumed owner exception: `serde_json = "1"` as a dev-dependency** (test only, already in `Cargo.lock`
+through Bevy; the serde-path test walks the JSON the editor walks).
+
+**Sources.** Model: Weber and Penn 1995 as the related-work passage of `10.1111_cgf.12744` describes it ("a user adjusts
+meaningful parameters, such as branching angles and segment lengths. Unfortunately, creating a new tree is cumbersome,
+requiring adjustment of up to 80 parameters"; this crate has 92 numbers), Lintermann and Deussen 1999
+(`10.1109_38.736469`). Shipping tooling: Epic's "Metadata Specifiers in Unreal Engine" (`ClampMin`/`ClampMax`; "Metadata
+only exists in the editor", the way a range kept for the editor drifts from the game's), Unity's SpeedTree Modeler manual
+(a `Clamp` group, Min and Max, per branch property). Technical: `bevy_reflect` 0.20.0 `attributes.rs` (a range declared
+on a field and read from `TypeInfo`, the alternative this table replaces for the generator's hot path). Note:
+`docs/research/param-fields.md`. Pending index: the three web pages.
+
+**Numbers** (`/tmp/f14`, removed with the scratch; findings in `/tmp/f14/findings.md`).
+
+- Tests: `cargo nextest run --all-features` 388 passed (379 before + 9 new: `the_catalogue_lists_every_number_of_a_tree_and_only_those`,
+  `every_row_reads_and_writes_the_field_its_path_names`, `a_default_is_the_default_trees_number_and_a_range_holds_it`,
+  `a_path_is_the_dotted_path_of_the_serde_form`, `a_value_the_door_takes_is_one_sanitized_leaves_alone`,
+  `a_value_past_the_range_is_the_nearest_end_to_the_generator`, `a_refused_edit_says_why_and_changes_nothing`,
+  `an_unknown_path_names_the_paths_it_is_near`, `a_part_the_tree_does_not_have_has_no_number_to_set`), `cargo test --all-features --doc`
+  39 passed (two new), clippy `--all-targets --all-features -D warnings` clean, `RUSTDOC -D warnings cargo doc --no-deps
+  --all-features` clean, `cargo build` (default), `--features serde` and `--features yaml` clean, `cargo package --locked`
+  135 files. **Not run, on purpose:** `cargo build --features ron` alone, `cargo build --release` (default features) and
+  `cargo build --examples` (default features): each re-compiles all of Bevy for a feature set this pass had not built (a cold
+  dev or release unification, 20 to 30 minutes each on this loaded host) and none touches code the change reaches (no `ron`
+  or example code changed; `--all-features` release builds of all the examples ran this pass).
+- A 40 166-case differential against the previous `apply_limits` (copied into a throwaway test, deleted before the first
+  commit): every numeric field of the 20 presets and of a birch with fruit, autumn, blossom, a hull and a prism, at 19
+  hostile values: the same tree and the same "moved" answer in every case. The first run of the new tests passed; the paths
+  in them had been fixed before it by reading `fields::numeric` (reflection drops an enum's variant name and reads an optional
+  part through `.0`; a colour has no colour-space segment).
+- Gallery, 526 scenarios, base `0a38c59` and the new tree (Apple M5): 526 PNG = 526 rows in each, none under 100 KB, flags
+  `-` x 526, no `BLANK_CAPTURE`/`CAPTURE_TIMEOUT`, no `ERROR`/`panicked`, three benign `WARN`s; **every PNG byte for byte
+  equal (526 of 526), `stats.tsv` columns 1-10 identical**; CPU and `--gpu` runs of the 7 CI scenarios equal the full run's rows;
+  `compare_gallery` 0.218 mean of means, worst 0.922, worst close 96.52%, as base and as iteration 13.
+- Forest bench (pool, 10 000 oak, `--offscreen --deterministic`), ABBA, 3 + 3, load 11 from other tenants: median frame
+  base 15.00 / 11.35 / 11.57 ms (the first was load), new 11.91 / 11.61 / 11.39 ms: median of medians 11.57 against 11.61
+  (+0.3%); cpu ms/frame base 34.82 / 32.10 / 33.23, new 34.43 / 33.73 / 32.22: 33.23 against 33.73 (+1.5%): noise. The
+  change is off the frame path (`sanitized()` runs when a tree is built or changed). naive and gpu-live were not run (no
+  code of those paths changed).
+- `sanitized()` (best of 20 x 50 000, release): oak 277 ns against 219 ns for a clone and the old `apply_limits`, a tree with
+  every part 223 against 141 ns (a fn-pointer walk against inlined code). A `build_tree` makes two calls (`build_tree`,
+  `skeleton_mesh`) and costs 29 µs (dead tree) to 11.7 ms (willow): at most 0.6% of the cheapest. Build probe at maturity
+  and age 4 for the 20 presets is in `/tmp/f14/findings.md`; vertex counts equal the gallery's.
+
+**Critique and verdict** (`/tmp/f14/critique.md`): the catalogue, the checked edit and the one-table `sanitized()` are each
+**GREAT** against the note's validation targets (all five met). Flaws, none stopping a ship: the range is the hard limit,
+so it bounds a number field, not a slider (the oak's 6 m is 1% of 0..500): the first draft of the note said "a slider
+from `fields()` alone", which was false, so the `fields` rustdoc says it and its doctest shows the slider span taken
+from the presets in three lines; about 60 of the 92 numbers are `ParamUnit::None` (shares and ratios) and need the field's
+doc to be labelled, which the crate does not carry at runtime; `set_field` takes `f32`, so a JSON `1e40` arrives as `inf` and
+is refused as "not finite"; `ParamUnit::Years` in the first draft was wrong (`TreeAge` counts growth units), now `Age`;
+`sanitized()` is 26% to 58% slower per call (off the frame path); the editor's own `set_path` is unchanged (a sibling
+repository). No visual change, so no clip, no `qa/visual_findings.md` entry and no gallery scenario was added.
+
+**Commits** (`loop/iter-14`): `b430fff` Research: parameter panels, `59f56e8` the implementation, `8738bc9` docs. Sibling
+repositories: none touched. For the editor, when it moves its pin: `tree_edit`'s `set_path` can call `params.set_field(path, v as f32)`
+for numbers (refusals carry the range and the nearest paths), its JSON schema can carry `minimum`/`maximum` and units from
+`TreeParams::fields()`, and `TreePreset::from_name` replaces its `TreePreset::ALL.iter().find(...)`.
+
+### Ranked backlog after iteration 14
+
+1. **`FloraSeason::of_date`**: the editor's `forest_season::season_for` (day of year, `is_southern`, 1 March as day 60, a half
+   year shifted south) is the formula for "the season on this date at this latitude" that a calendar game needs too;
+   a general form beside `of_year`, no clock owned here (`FloraSeason`, `FloraWind` stay values the caller sets).
+2. **A glide with no per-tree cost** (iteration 11's item 2): a leaf marker so only leaf meshes are tagged, or a shared slot
+   in the buffer for trees that began together; and the leaves a glide loses falling (`LeafBurst`).
+3. **A slider range and a label per field**: a `typical` span for each `ParamField` (the 20 presets' span, or a designed one: the
+   design question the note defers) and a one-line label, if the editor asks; the table is the place for both.
+4. **The hull crown by leaf size**: `crown_hull` takes positions only, so a `CrownStyle::Hull` tree growing on the CPU still
+   pops its hull when a leaf is born.
+5. **Finish the willow (D-052)**: leaf ribbons, strands kept as lines at level 1, limbs whose leaves reach their tips, a greener
+   strand colour, a forked trunk; D-074 / D-075 on big; `RadialOutward` facing on a growing branch.
+
+**Environment, for the next pass.** `CARGO_INCREMENTAL=0` is still needed (the supervisor's `CARGO_INCREMENTAL=1` with
+`rustc-wrapper = sccache` stops cargo). The supervisor's `CARGO_TARGET_DIR=~/target/flora-loop` had a warm `debug` for
+the all-features test profile and **no `release` at all**: the first `cargo build --release --examples --all-features`
+took 34 minutes (load 8 to 14), and every other feature set is a cold re-unification of Bevy in the same profile (the
+default-features dev `cargo build --examples`, `--features ron` alone, default-features `--release`: 20 to 30 minutes each),
+so a gate that runs them all needs about two hours here; they are the CI job's to run on big. **A baseline build is not made
+by building the clone before editing:** cargo compiles whatever is on disk when it reaches the crate, so a release build
+started before the edits and finished after them produced the new code (found when the log showed `bevy_flora` compiling
+after the first edit; the baseline was then built from a detached worktree of `0a38c59`, `~/f14_base`, into the same target
+directory: the dependencies were reused and the crate and three examples took 3 m 44 s). The gallery of this pass takes
+5 minutes on the M5 and the 6-run forest bench 2 minutes. Slips, not repeated: a `pkill -f` of an orphaned `rustc` by a
+path pattern killed the next gate step's compiler too (rerun by hand); one docs edit (`Years` to `Age` in the guide) was
+made with `sed -i` instead of `edit`.
+
