@@ -1,17 +1,21 @@
-//! A tree from a `.tree.ron` file that rebuilds the moment the file is saved.
+//! A tree from a `.tree.ron` or `.tree.yaml` file that rebuilds the moment the file is saved.
 //!
 //! ```text
 //! cargo run --release --example tree_file --features ron,file_watcher [-- --tree trees/maple.tree.ron]
+//! cargo run --release --example tree_file --features ron,yaml,file_watcher -- --tree trees/maple.tree.yaml
 //! cargo run --release --example tree_file --features ron -- --export oak > examples/assets/trees/oak.tree.ron
+//! cargo run --release --example tree_file --features ron,yaml -- --export oak --yaml > examples/assets/trees/oak.tree.yaml
 //! cargo run --release --example tree_file --features ron -- --screenshot tree.png
 //! ```
 //!
 //! The tree is a `ProceduralTreeAsset` loaded from `examples/assets/<--tree>` (default
-//! `trees/maple.tree.ron`). With the `file_watcher` feature (Bevy's), edit the file while the
-//! example runs and the tree rebuilds when you save. A file that does not parse keeps the last
-//! good tree, and the error (line, column, and for a misspelt field the fields that exist) shows
-//! on screen and in the log. `--export <preset>` prints a preset as a tree file to start from;
-//! `--screenshot <path>` renders offscreen, saves the tree once it is drawn, and exits.
+//! `trees/maple.tree.ron`; a `.tree.yaml` needs the `yaml` feature too, which the example's own
+//! `ron` requirement does not imply). With the `file_watcher` feature (Bevy's), edit the file
+//! while the example runs and the tree rebuilds when you save. A file that does not parse keeps
+//! the last good tree, and the error (line, column, and for a misspelt field the fields that
+//! exist) shows on screen and in the log. `--export <preset>` prints a preset as a tree file to
+//! start from (`--yaml`: as a `.tree.yaml`); `--screenshot <path>` renders offscreen, saves the
+//! tree once it is drawn, and exits.
 
 use std::path::PathBuf;
 
@@ -40,13 +44,18 @@ struct Example {
 struct Hud;
 
 fn usage() -> ! {
-    eprintln!("usage: tree_file [--tree <path under examples/assets>] [--export <preset>] [--screenshot <path>]");
+    eprintln!(
+        "usage: tree_file [--tree <path under examples/assets>] [--export <preset> [--yaml]] [--screenshot <path>]"
+    );
     std::process::exit(2);
 }
 
 fn main() {
     let mut path = "trees/maple.tree.ron".to_string();
     let mut screenshot = None;
+    let mut export = None;
+    #[cfg(feature = "yaml")]
+    let mut yaml = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| usage());
@@ -55,18 +64,27 @@ fn main() {
             "--screenshot" => screenshot = Some(PathBuf::from(value())),
             "--export" => {
                 let name = value();
-                let preset = match name.to_ascii_lowercase().parse::<TreePreset>() {
-                    Ok(preset) => preset,
+                match name.to_ascii_lowercase().parse::<TreePreset>() {
+                    Ok(preset) => export = Some(preset),
                     Err(error) => {
                         eprintln!("{error}");
                         usage();
                     }
-                };
-                print!("{}", preset.params().to_ron());
-                return;
+                }
             }
+            #[cfg(feature = "yaml")]
+            "--yaml" => yaml = true,
             _ => usage(),
         }
+    }
+    if let Some(preset) = export {
+        let params = preset.params();
+        #[cfg(feature = "yaml")]
+        let text = if yaml { params.to_yaml() } else { params.to_ron() };
+        #[cfg(not(feature = "yaml"))]
+        let text = params.to_ron();
+        print!("{text}");
+        return;
     }
 
     App::new()
