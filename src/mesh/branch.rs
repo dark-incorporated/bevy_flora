@@ -856,6 +856,25 @@ mod tests {
     }
 
     #[test]
+    fn zz_debug_open() {
+        let params = TreePreset::Willow.params();
+        let skeleton = generate_skeleton(&params);
+        let node = skeleton.nodes.iter().find(|n| n.id == 151).unwrap();
+        for segs in [4u32, 6] {
+            let tube = tube_mesh(node, segs, params.branches.twist, Vec2::ONE);
+            let base = primary_base(node, node.start, node.base_radius, segs);
+            let mut wood = tube.clone();
+            wood.extend(&base);
+            eprintln!("segs {segs}: tube open {:?}", open_boundary_vertices(&tube).len());
+            eprintln!("segs {segs}: base open {:?}", open_boundary_vertices(&base).len());
+            for p in open_boundary_vertices(&wood) {
+                eprintln!("  open {p:?} depth {}", crate::skeleton::trunk_depth(&params.trunk, params.seed, p));
+            }
+            eprintln!("rings {} bend {} axis_points {} start {:?} dir {:?} len {} root {:?}", tube_rings(node, params.branches.twist), node.bend, node.axis_points(), node.start, node.direction, node.length, primary_root(node));
+        }
+    }
+
+    #[test]
     fn primary_bases_are_buried_in_the_trunk() {
         // Tube plus root segment is open only at the root; that opening must
         // be inside the trunk, or a shallow junction shows a flat, open end.
