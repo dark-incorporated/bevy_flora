@@ -1596,4 +1596,14 @@ that *displayed* the line it anchors to (a first attempt on an un-displayed line
 clone` and `distill_search` output is huge (redirect the first, use `limit` of 3 or fewer, `include_text` false, for the second),
 and a `bash` call over 60 s is backgrounded, so long runs go `async` with their output in a file.
 
-**Merge and clean-up (iteration 15).** See the next line once merged.
+**Merge and clean-up (iteration 15).** `loop/iter-15` pushed; merge `c59bff4` on `main` (`--no-ff`, `main` already held the
+research commit `397c51d`; the merged tree `8c68f03` is the branch's tree, so the branch's gate is the merged tree's, and
+nothing was re-run); `main` pushed. No release (6-hour rule), no issue referenced or closed (none was open).
+Removed, mine: `/tmp/f15` (3.1 GB: the base and new release binaries of `gallery`, `forest` and `compare_gallery`, two
+526-scenario galleries, the CPU and GPU parity runs, build and gate logs, the Sanctuary shallow clone, scripts, findings,
+critique) and the throwaway `examples/zz_probe.rs` (never committed). No worktree was made this pass. Kept: `~/target/flora-loop`
+(the warm `debug` and `release` the next pass starts from). `df -h /`: 24 GB free at the start, 20 GB at the lowest, 23 GB after.
+Leftovers of earlier passes, listed and not touched: the worktree
+`/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at `42ec6a4`,
+with uncommitted changes to `.github/workflows/ci.yml`, `.omp/commands/build-loop.md` and `AGENTS.md`: not clean, so not a removal
+candidate), `wiggum/parked-pass-9-20261102-054127` (stale, above), and the branches `loop/iter-4` to `-15` (not deleted).
