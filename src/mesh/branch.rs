@@ -922,9 +922,10 @@ mod tests {
             assert!(open.iter().any(|p| p.distance(corner) < 1.0e-6), "{corner:?} is not on the hole: {open:?}");
         }
 
-        // A gap three tolerances wide is a real gap: the pair is not welded and its edges are open.
-        let torn = tetrahedron_with_a_split_vertex(3.0 * OPEN_BOUNDARY_WELD_M);
-        assert!(!open_boundary_vertices(&torn).is_empty(), "a gap of three tolerances was welded shut");
+        // A gap of 0.3 mm is a real gap: the pair is not welded and its edges are open. The gap is written
+        // in metres, not as a multiple of the tolerance, so a tolerance raised past it fails here.
+        let torn = tetrahedron_with_a_split_vertex(3.0e-4);
+        assert!(!open_boundary_vertices(&torn).is_empty(), "a gap of 0.3 mm was welded shut");
     }
 
     #[test]

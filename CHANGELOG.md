@@ -17,8 +17,8 @@ All notable changes to `bevy_flora`. The format follows
   look could fail a protected test for no defect in the wood: iteration 17's willow did, at `branches.start` 0.34 (primary
   151). The helper now welds every pair within 0.1 mm on each axis with a hashed grid and a union-find (Ericson, *Real-Time
   Collision Detection*, 12.5), a superset of what the rounding grid welded; both tests' assertions are unchanged, a new test
-  holds the helper (a seam pair across a step reads closed, a missing face still reads open, a gap of three tolerances is
-  not welded). Nothing the crate builds changes.
+  holds the helper (a seam pair across a step reads closed, a missing face still reads open, a gap of 0.3 mm is not
+  welded). Nothing the crate builds changes.
 
 ## [0.48.0] - 2026-11-25
 

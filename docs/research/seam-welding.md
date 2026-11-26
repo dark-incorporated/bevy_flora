@@ -94,8 +94,8 @@ unchanged" does not apply.
 1. The issue's repro: the willow with `branches.start = 0.34`, `primary_bases_are_buried_in_the_trunk`'s own check, fails
    with the rounding helper (primary 151) and passes with the tolerance helper.
 2. A closed mesh with one seam pair straddling a rounding step reads open with the old helper and closed with the new; the
-   same mesh with one triangle removed reads open with both and names the same boundary; the pair moved apart by three
-   tolerances reads open with both (a real gap is not welded).
+   same mesh with one triangle removed reads open with both and names the same boundary; the pair moved 0.3 mm apart (three
+   tolerances, written in metres in the test so a tolerance raised past it fails) reads open with both (a real gap is not welded).
 3. Over every preset, many seeds and 4 and 6 sides (the two tests' counts), the new helper reports no open vertex the old one
    did not, and every pair the old grid cut in two is a pair of vertices within the tolerance (the gap measured).
 4. The two protected tests pass on the unchanged presets; `cargo nextest run --all-features` passes as before.
@@ -110,7 +110,7 @@ the new one in a throwaway test (deleted before the commit):
   `primary_bases_are_buried_in_the_trunk`'s check on **primary 151**, the id the issue names; the tolerance helper on none.
 - **The synthetic mesh.** The closed tetrahedron whose first vertex is written twice, 2e-6 m apart across the 0.5e-4 step: the
   rounding helper (emulated in Python with `f32` rounding, keys `(0,0,0)` and `(1,0,0)`) reads **four open edges**; the new
-  test passes (closed; the same mesh with a face removed names exactly the hole's three vertices; the pair three tolerances
+  test passes (closed; the same mesh with a face removed names exactly the hole's three vertices; the pair 0.3 mm
   apart reads open).
 - **A sweep** over the 20 presets, seeds 0 to 99 and 4 and 6 sides (**45 010** builds of a primary's tube plus its base, the
   two tests' construction): the rounding helper read an open end on 32 243 (the root end, as designed), the tolerance helper on
