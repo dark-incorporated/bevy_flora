@@ -395,7 +395,7 @@ fn willow() -> TreeParams {
     TreeParams {
         seed: 42,
         trunk: TrunkParams {
-            height: 5.0,
+            height: 4.6,
             radius: 0.5,
             radial_segments: 8,
             height_segments: 8,
@@ -412,26 +412,29 @@ fn willow() -> TreeParams {
             leader_has_branches: false,
             twist: 10.0,
         },
+        // The habit (D-052, `docs/research/willow-habit.md`): limbs rise from the upper trunk at about 50 degrees
+        // above level and weep over at their ends, shorter and flatter toward the top, so the crown is a dome
+        // about as tall as it is wide with no trunk standing out of it; the strands hang from its arches.
         branches: BranchParams {
-            start: 0.4,
+            start: 0.345,
             end: 1.0,
             density: 4.0,
-            length: 0.7,
-            angle: 46.0,
+            length: 0.85,
+            angle: 26.0,
             radius_ratio: 0.2,
             taper: 0.85,
             phyllotaxis_angle: 137.5,
             randomness: 0.3,
-            up_attraction: -0.5,
+            up_attraction: -0.4,
             recursion: 3,
             sub_branch_count: 2,
             sub_branch_scale: 0.9,
             length_variation: 0.25,
             sub_branch_position_bias: 0.3,
-            apical_dominance: 0.2,
-            flatness: 0.2,
+            apical_dominance: 0.55,
+            flatness: 0.1,
             angle_curve: -0.1,
-            crown_angle_variation: -0.3,
+            crown_angle_variation: 0.3,
             twist: 15.0,
             gravity_strength: 2.5,
             stiffness: 0.1,
@@ -2117,6 +2120,30 @@ mod tests {
             };
             let (bottom, middle) = (reach(0.0, 1.0 / 3.0), reach(1.0 / 3.0, 2.0 / 3.0));
             assert!(bottom >= 0.9 * middle, "seed {seed}: the crown reaches {bottom} m in its bottom third and {middle} m in its middle");
+        }
+    }
+
+    #[test]
+    fn willow_is_a_dome_about_as_tall_as_it_is_wide_and_no_pole_stands_out_of_it() {
+        // D-052 (`docs/research/willow-habit.md`): the crown was a flat mound round a bare pole, 0.46 to 0.61 as
+        // tall as it was wide (the species' is about 1: "a stout trunk topped by a graceful broad-rounded
+        // crown") and the trunk's top was the tree's top (the highest vertex 1.00 to 1.14 times the trunk).
+        let params = TreePreset::Willow.params();
+        for seed in [42, 1, 2, 3, 4] {
+            let params = TreeParams { seed, ..params.clone() };
+            let tree = crate::pipeline::build_tree(&params, f32::INFINITY);
+            let all = || tree.trunk.positions.iter().chain(&tree.foliage.positions);
+            let top = all().map(|p| p.y).fold(f32::MIN, f32::max);
+            let extent = |axis: fn(&bevy::math::Vec3) -> f32| {
+                all().map(axis).fold(f32::MIN, f32::max) - all().map(axis).fold(f32::MAX, f32::min)
+            };
+            let width = extent(|p| p.x).max(extent(|p| p.z));
+            assert!(top >= 0.6 * width, "seed {seed}: the crown is {top} m tall and {width} m wide");
+            assert!(
+                top >= 1.2 * params.trunk.height,
+                "seed {seed}: the highest point, {top} m, is not above the {} m trunk's top",
+                params.trunk.height
+            );
         }
     }
 
