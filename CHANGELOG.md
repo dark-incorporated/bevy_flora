@@ -7,6 +7,19 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **The test helper that finds a branch's open ends no longer reads a closed ring as open** (#96,
+  `docs/research/seam-welding.md`). `open_boundary_vertices` (`src/mesh/branch.rs`, the helper of
+  `primary_bases_are_buried_in_the_trunk` and `steep_primaries_end_in_a_closed_rounded_base`) identified coincident vertices
+  by rounding each position to a 0.1 mm grid, so a ring's seam vertex and the vertex it repeats (the same point to `f32`
+  rounding) read as two whenever they fell either side of a rounding step, and the seam's edges read as open. A change of
+  look could fail a protected test for no defect in the wood: iteration 17's willow did, at `branches.start` 0.34 (primary
+  151). The helper now welds every pair within 0.1 mm on each axis with a hashed grid and a union-find (Ericson, *Real-Time
+  Collision Detection*, 12.5), a superset of what the rounding grid welded; both tests' assertions are unchanged, a new test
+  holds the helper (a seam pair across a step reads closed, a missing face still reads open, a gap of three tolerances is
+  not welded). Nothing the crate builds changes.
+
 ## [0.48.0] - 2026-11-25
 
 A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`), and the willow's strands carry leafy ribbons where they carried a leaf now and then (`docs/research/strand-leaves.md`, D-052) on a crown that is a dome as tall as it is wide instead of a flat mound round a bare pole (`docs/research/willow-habit.md`, D-052).
