@@ -7,7 +7,7 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
-A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`), and the willow's strands carry leafy ribbons where they carried a leaf now and then (`docs/research/strand-leaves.md`, D-052).
+A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`), and the willow's strands carry leafy ribbons where they carried a leaf now and then (`docs/research/strand-leaves.md`, D-052) on a crown that is a dome as tall as it is wide instead of a flat mound round a bare pole (`docs/research/willow-habit.md`, D-052).
 
 ### Added
 
@@ -68,7 +68,7 @@ A second layer of plants, a brush stroke or a replant can keep clear of what alr
   (`LeafPoint::strand`): 8 vertices and 4 triangles for both sides where a scanned card has 20 and 16. The willow
   now sets 1.4, 0.9 and 45 (`src/presets.rs`: its other values are as they were). A probe that rasterises every triangle
   of the mature willow (seed 42) over the lower third of its crown, from the front and the side, covered 0.335 and 0.271
-  of it in 0.47.1, a fence with two thirds sky, and covers 0.585 and 0.509 now (level 1: 0.562 and 0.485, from 0.285 and
+  of it in 0.47.1, a fence with two thirds sky, and covered 0.585 and 0.509 with strand leaves on that crown (level 1: 0.562 and 0.485, from 0.285 and
   0.234; level 2: 0.552 and 0.475, from 0.302 and 0.228: the coarse levels keep the curtain, because a strand's leaves
   ride through `coarse_leaves` as lances too). Turning the leaves out of the rope's line is what does it: 2.6 times the leaves in line
   with the ropes moved the cover from 0.335 to 0.336. The willow's foliage is 40 924 triangles, down from 74 080 (64 832
@@ -86,7 +86,30 @@ A second layer of plants, a brush stroke or a replant can keep clear of what alr
   `strand_density`, `strand_size` and `strand_angle` (a literal needs them or `..Default::default()`; a `.tree.ron` or
   `.tree.yaml` without them loads with the defaults). The strand leaves of any tree with strands and leaf cards are
   lances now, so a tree of your own with `branches.strands` draws different leaves (the oak's in the gallery do). The
-  next release is a minor one.
+  next release is a minor one. The willow preset's eight values (the next entry) change its crown (taller, narrower, no
+  bare pole), so a game that scatters willows sees a different tree.
+- **The willow is a dome as tall as it is wide, with no pole standing out of it** (D-052, `docs/research/willow-habit.md`; a
+  design decision, D-082). The preset's crown was a flat umbrella round a bare pole: its limbs left the trunk nearly level
+  (46 degrees from vertical, `up_attraction` -0.5), a gravity bend laid them over at once, and the topmost were the longest
+  (`CrownShape::Hemispherical`, `apical_dominance` 0.2), so over eight seeds the crown's highest vertex stood 0.46 to 0.61
+  of its width above the ground (the Missouri Botanical Garden gives 30 to 50 feet tall and as wide: "a stout trunk topped
+  by a graceful broad-rounded crown of branches that sweep downward to the ground") and 1.00 to 1.14 times the trunk's
+  height: the trunk's top was the tree's top. The generator already builds the arching limb (a direction with a vertical
+  part, bent over by `t^2 * bend`), so the change is eight values of the preset and nothing in the generator: `trunk.height`
+  5.0 -> 4.6, `branches.start` 0.4 -> 0.345, `length` 0.7 -> 0.85, `angle` 46 -> 26, `up_attraction` -0.5 -> -0.4,
+  `flatness` 0.2 -> 0.1, `apical_dominance` 0.2 -> 0.55 and `crown_angle_variation` -0.3 -> 0.3. The limbs now leave at about
+  50 degrees above level (8 before), rise, arch and weep, shorter and flatter toward the top, and the strands hang from the
+  arches. Over the same eight seeds (mature, level 0, a probe that rasterises every triangle on a 256 x 256 grid) the highest
+  vertex is 0.67 to 0.99 of the width (median 0.88) and 1.3 to 1.7 times the trunk's height, the tree is 1.29 times as tall and
+  0.81 times as wide, the lower third of the crown is covered 0.41 to 0.52 from the front and 0.42 to 0.56 from the side (0.48
+  to 0.57 and 0.44 to 0.62 before; the dome's box is taller, so the same ropes cover a smaller share of a larger area), the
+  foliage has 2.6 percent fewer triangles (37 889 against 38 895 on average) and the wood 2.1 percent more (40 661 against 39
+  828). The protected willow tests (`up_attraction` under -0.3, limbs to 0.93 of the trunk, a curtain to the ground, branch
+  tips and leaves that hang) are unchanged and pass; a new one holds the habit (`willow_is_a_dome_about_as_tall_as_it_is_wide_and_no_pole_stands_out_of_it`).
+  `branches.start` is 0.345 because the topmost limb sits `spacing * (1 + frac(zone * density))` under the trunk's top and
+  `willow_crown_reaches_the_top_of_the_trunk` asks for 0.93 of it. `up_attraction` stays at -0.4 although +0.2 drew the
+  best silhouette in the search (an 8.7 m tree 10 m across): `willow_values` pins it under -0.3. The gallery's 36 willow
+  scenarios draw the new tree; `docs/media/willow-habit.jpg` shows it beside 0.47.1's.
 
 ## [0.47.1] - 2026-11-25
 
