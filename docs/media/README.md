@@ -24,17 +24,17 @@ palette they need is larger — see the table. A video over 8 seconds belongs in
 
 | File | Shows | Capture | Date | Version |
 |---|---|---|---|---|
-| `growth.gif` | The maple preset growing from a bare trunk to a full crown; 480x360, 24 fps, 8 s, 5.0 MB | `cargo run --release --example capture_growth -- --preset maple --out target/capture/growth` | 2026-11-25 | 0.47.1 |
-| `grove.gif` | Eight species growing in turn, a gust front crossing them; 560x315, 20 fps, 8 s, 6.1 MB | `cargo run --release --example capture_growth -- --grove --out target/capture/grove` | 2026-11-25 | 0.47.1 |
-| `seasons.gif` | The grove through autumn, leaf fall, snow and spring blossom; 560x315, 20 fps, 8 s, 5.8 MB | `cargo run --release --example capture_growth -- --seasons --out target/capture/seasons` | 2026-11-25 | 0.47.1 |
-| `shake.gif` | Two axe hits swing one tree each, then a blast swings the grove; 560x315, 20 fps, 8 s, 4.8 MB | `cargo run --release --example capture_growth -- --shake --out target/capture/shake` | 2026-11-25 | 0.47.1 |
-| `fell.gif` | An oak notched by four blows, cut, and falling to its limbs; 560x315, 20 fps, 8 s, 3.4 MB | `cargo run --release --example capture_growth -- --fell --out target/capture/fell` | 2026-11-25 | 0.47.1 |
-| `fire.gif` | The grove at dusk with a fire running through it on the wind; 560x315, 20 fps, 8 s, 3.7 MB | `cargo run --release --example capture_growth -- --fire --out target/capture/fire` | 2026-11-25 | 0.47.1 |
-| `push.gif` | A body walking through shrubs, the stems bending aside and closing; 560x315, 20 fps, 8 s, 4.5 MB | `cargo run --release --example capture_growth -- --push --out target/capture/push` | 2026-11-25 | 0.47.1 |
-| `chop.gif` | A woodcutter felling a row of four trees, each found by `FloraIndex`; 560x315, 20 fps, 8 s, 5.1 MB | `cargo run --release --example capture_growth -- --chop --out target/capture/chop` | 2026-11-25 | 0.47.1 |
-| `harvest.gif` | An apple tree shaken, another picked into a basket; 560x315, 20 fps, 8 s, 2.9 MB | `cargo run --release --example capture_growth -- --harvest --out target/capture/harvest` | 2026-11-25 | 0.47.1 |
-| `playground.gif` | First person: shake, pick, notch, fell, buck, rain; 560x315, 16 fps, 8 s, 7.0 MB | `cargo run --release --example playground -- --demo --out target/capture/playground` | 2026-11-25 | 0.47.1 |
-| `isometric.gif` | An orthographic camera zooming over a pooled forest, the walker seen through the trees; 560x315, 16 fps, 8 s, 7.0 MB | `cargo run --release --example isometric -- --demo --out target/capture/isometric` | 2026-11-25 | 0.47.1 |
+| `growth.gif` | The maple preset growing from a bare trunk to a full crown; 480x360, 24 fps, 8 s, 5.0 MB | `cargo run --release --example capture_growth -- --preset maple --out target/capture/growth` | 2026-11-25 | 0.48.0 |
+| `grove.gif` | Eight species growing in turn, a gust front crossing them; 560x315, 20 fps, 8 s, 6.1 MB | `cargo run --release --example capture_growth -- --grove --out target/capture/grove` | 2026-11-25 | 0.48.0 |
+| `seasons.gif` | The grove through autumn, leaf fall, snow and spring blossom; 560x315, 20 fps, 8 s, 5.8 MB | `cargo run --release --example capture_growth -- --seasons --out target/capture/seasons` | 2026-11-25 | 0.48.0 |
+| `shake.gif` | Two axe hits swing one tree each, then a blast swings the grove; 560x315, 20 fps, 8 s, 4.8 MB | `cargo run --release --example capture_growth -- --shake --out target/capture/shake` | 2026-11-25 | 0.48.0 |
+| `fell.gif` | An oak notched by four blows, cut, and falling to its limbs; 560x315, 20 fps, 8 s, 3.4 MB | `cargo run --release --example capture_growth -- --fell --out target/capture/fell` | 2026-11-25 | 0.48.0 |
+| `fire.gif` | The grove at dusk with a fire running through it on the wind; 560x315, 20 fps, 8 s, 3.7 MB | `cargo run --release --example capture_growth -- --fire --out target/capture/fire` | 2026-11-25 | 0.48.0 |
+| `push.gif` | A body walking through shrubs, the stems bending aside and closing; 560x315, 20 fps, 8 s, 4.5 MB | `cargo run --release --example capture_growth -- --push --out target/capture/push` | 2026-11-25 | 0.48.0 |
+| `chop.gif` | A woodcutter felling a row of four trees, each found by `FloraIndex`; 560x315, 20 fps, 8 s, 5.1 MB | `cargo run --release --example capture_growth -- --chop --out target/capture/chop` | 2026-11-25 | 0.48.0 |
+| `harvest.gif` | An apple tree shaken, another picked into a basket; 560x315, 20 fps, 8 s, 2.9 MB | `cargo run --release --example capture_growth -- --harvest --out target/capture/harvest` | 2026-11-25 | 0.48.0 |
+| `playground.gif` | First person: shake, pick, notch, fell, buck, rain; 560x315, 16 fps, 8 s, 7.0 MB | `cargo run --release --example playground -- --demo --out target/capture/playground` | 2026-11-25 | 0.48.0 |
+| `isometric.gif` | An orthographic camera zooming over a pooled forest, the walker seen through the trees; 560x315, 16 fps, 8 s, 7.0 MB | `cargo run --release --example isometric -- --demo --out target/capture/isometric` | 2026-11-25 | 0.48.0 |
 
 `playground.gif` and `isometric.gif` are 7.0 MB, over the 4 MB budget: a first-person scene with a HUD
 and a dither fade does not survive a 96-colour palette, so they are quantised to 64 colours at 16 fps.
