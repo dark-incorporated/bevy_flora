@@ -216,3 +216,15 @@ what it rests on; this file only says what exists. Newest additions last in each
   empty).
 - `book_real_time_collision_detection_ericson`: Ericson (hashed grids; listed above).
 - Web, not indexed: Bridson 2007, "Fast Poisson Disk Sampling in Arbitrary Dimensions" (the background grid `scatter.rs` uses).
+
+## Mesh seams and vertex welding (test helpers, collision meshes, tools)
+
+- `book_real_time_collision_detection_ericson`: Ericson, *Real-Time Collision Detection*, 12.5 "Vertex welding" (a hashed grid
+  whose cell is at least twice the welding distance, the neighbouring cells looked at, simultaneous against sequential welding)
+  and chapter 11 (absolute and relative tolerances; listed above for hashed grids).
+- `s2007-advances-pdf-slides-2-8-mb-2`: Oat (AMD), "Real-Time Wrinkles", SIGGRAPH 2007 (a UV seam's vertices "may have the same
+  object-space positions" yet are two vertices in the buffer; a spatial hash of the position as the vertex's identity).
+- `10.48550_arxiv.2204.03237`: Yang, Wang and Huo 2022 (listed above; the generalized cylinder's swept disk is a ring whose seam
+  the texture cuts).
+- The last 200 `catalog_recent` events were re-read on 2026-11-25 (2026-11-17 to 2026-11-20 again: nothing on trees, plants,
+  foliage, phenology, fire, impostors, wind or felling).
