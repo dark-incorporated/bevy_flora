@@ -720,6 +720,7 @@ impl<'a> PinSpheres<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bevy::math::IVec3;
     use crate::mesh::rings::tests::{assert_faces_outward, assert_indices_valid};
     use crate::presets::TreePreset;
     use crate::skeleton::generate_skeleton;
@@ -835,9 +836,63 @@ mod tests {
         }
     }
 
-    /// Vertices on edges used by exactly one triangle (open boundaries), with
-    /// coincident vertices (seams, cap rings) treated as one.
+    /// Two vertices that differ by no more than this on every axis are one point: a seam's repeat of a
+    /// ring's first vertex is the same point to `f32` rounding, which is far below it (#96).
+    const OPEN_BOUNDARY_WELD_M: f32 = 1.0e-4;
+
+    /// The lowest vertex index of the set each vertex belongs to, the sets being the vertices that lie
+    /// within `OPEN_BOUNDARY_WELD_M` of each other on every axis, directly or through a chain of such
+    /// pairs (Ericson, *Real-Time Collision Detection*, 12.5: a hashed grid whose cell is at least
+    /// twice the welding distance, the neighbouring cells looked at, and a simultaneous weld, which
+    /// has no order). A grid of rounded keys cut a pair a rounding error apart in two whenever the
+    /// pair straddled one of its steps.
+    fn weld_roots(positions: &[Vec3]) -> Vec<u32> {
+        fn find(root: &mut [u32], mut i: u32) -> u32 {
+            while root[i as usize] != i {
+                root[i as usize] = root[root[i as usize] as usize];
+                i = root[i as usize];
+            }
+            i
+        }
+        let cell = |p: Vec3| (p / (2.0 * OPEN_BOUNDARY_WELD_M)).floor().as_ivec3();
+        let mut grid: std::collections::HashMap<IVec3, Vec<u32>> = Default::default();
+        let mut root: Vec<u32> = (0..positions.len() as u32).collect();
+        for (i, &p) in positions.iter().enumerate() {
+            let home = cell(p);
+            for offset in (-1..=1).flat_map(|x| (-1..=1).flat_map(move |y| (-1..=1).map(move |z| IVec3::new(x, y, z)))) {
+                for &j in grid.get(&(home + offset)).into_iter().flatten() {
+                    if (positions[j as usize] - p).abs().max_element() <= OPEN_BOUNDARY_WELD_M {
+                        let (a, b) = (find(&mut root, i as u32), find(&mut root, j));
+                        root[a.max(b) as usize] = a.min(b);
+                    }
+                }
+            }
+            grid.entry(home).or_default().push(i as u32);
+        }
+        (0..positions.len() as u32).map(|i| find(&mut root, i)).collect()
+    }
+
+    /// Vertices on edges used by exactly one triangle (open boundaries), with coincident vertices
+    /// (seams, cap rings) welded by `weld_roots`.
     fn open_boundary_vertices(mesh: &MeshData) -> Vec<Vec3> {
+        let root = weld_roots(&mesh.positions);
+        let mut uses: std::collections::HashMap<(u32, u32), u32> = Default::default();
+        for &[a, b, c] in mesh.indices.as_chunks::<3>().0 {
+            for (u, v) in [(a, b), (b, c), (c, a)] {
+                let (ru, rv) = (root[u as usize], root[v as usize]);
+                if ru != rv {
+                    *uses.entry((ru.min(rv), ru.max(rv))).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut open: Vec<u32> = uses.into_iter().filter(|&(_, n)| n == 1).flat_map(|((u, v), _)| [u, v]).collect();
+        open.sort_unstable();
+        open.dedup();
+        open.into_iter().map(|r| mesh.positions[r as usize]).collect()
+    }
+
+    /// The helper before #96, kept only while this change is measured against it.
+    fn rounded_open_boundary_vertices(mesh: &MeshData) -> Vec<Vec3> {
         let key = |i: u32| (mesh.positions[i as usize] * 1.0e4).round().as_ivec3().to_array();
         let mut uses: std::collections::HashMap<([i32; 3], [i32; 3]), u32> = Default::default();
         for &[a, b, c] in mesh.indices.as_chunks::<3>().0 {
@@ -853,6 +908,100 @@ mod tests {
             .flat_map(|((u, v), _)| [u, v])
             .map(|k| Vec3::new(k[0] as f32, k[1] as f32, k[2] as f32) / 1.0e4)
             .collect()
+    }
+
+    /// A tetrahedron whose first vertex is written twice, a rounding error apart, one copy on each side
+    /// of a step of a 0.1 mm rounding grid (`0.5` of a cell), the second face using the copy: the
+    /// surface is closed, as a ring's seam is (#96).
+    fn tetrahedron_with_a_split_vertex(copy_offset: f32) -> MeshData {
+        MeshData {
+            positions: vec![Vec3::new(0.49e-4, 0.0, 0.0), Vec3::X, Vec3::Y, Vec3::Z, Vec3::new(0.49e-4 + copy_offset, 0.0, 0.0)],
+            indices: vec![0, 2, 1, 4, 1, 3, 0, 3, 2, 1, 2, 3],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn open_boundary_vertices_welds_a_pair_across_a_rounding_step_and_still_finds_a_hole() {
+        // The copy is 2e-6 m from the first vertex: the same point, either side of the 0.5e-4 step.
+        let closed = tetrahedron_with_a_split_vertex(2.0e-6);
+        assert_ne!(
+            (closed.positions[0] * 1.0e4).round().x,
+            (closed.positions[4] * 1.0e4).round().x,
+            "the pair must straddle a rounding step for this test to mean anything"
+        );
+        assert!(open_boundary_vertices(&closed).is_empty(), "a seam pair a rounding error apart read as an open edge");
+
+        // The same surface with one face missing has a hole, and the hole's three vertices are named.
+        let mut holed = closed.clone();
+        holed.indices.truncate(9);
+        let open = open_boundary_vertices(&holed);
+        assert_eq!(open.len(), 3, "{open:?}");
+        for corner in [Vec3::X, Vec3::Y, Vec3::Z] {
+            assert!(open.iter().any(|p| p.distance(corner) < 1.0e-6), "{corner:?} is not on the hole: {open:?}");
+        }
+
+        // A gap three tolerances wide is a real gap: the pair is not welded and its edges are open.
+        let torn = tetrahedron_with_a_split_vertex(3.0 * OPEN_BOUNDARY_WELD_M);
+        assert!(!open_boundary_vertices(&torn).is_empty(), "a gap of three tolerances was welded shut");
+    }
+
+    #[test]
+    fn zz_the_new_helper_against_the_old_one() {
+        let (mut primaries, mut old_open, mut new_open, mut healed_primaries, mut healed_vertices) = (0, 0, 0, 0, 0);
+        let (mut new_not_in_old, mut healed_without_straddle) = (0, 0);
+        let near = |a: Vec3, b: Vec3| (a - b).abs().max_element() <= 1.5e-4;
+        for preset in TreePreset::ALL {
+            for seed in 0..24 {
+                let mut params = preset.params();
+                params.seed = seed;
+                let skeleton = generate_skeleton(&params);
+                for node in skeleton.nodes.iter().filter(|n| n.kind == NodeKind::Primary) {
+                    for sides in [4, 6] {
+                        let mut wood = tube_mesh(node, sides, params.branches.twist, Vec2::ONE);
+                        wood.extend(&primary_base(node, node.start, node.base_radius, sides));
+                        let (old, new) = (rounded_open_boundary_vertices(&wood), open_boundary_vertices(&wood));
+                        primaries += 1;
+                        old_open += !old.is_empty() as u32;
+                        new_open += !new.is_empty() as u32;
+                        new_not_in_old += new.iter().filter(|&&n| !old.iter().any(|&o| near(o, n))).count();
+                        let healed: Vec<Vec3> = old.iter().copied().filter(|&o| !new.iter().any(|&n| near(o, n))).collect();
+                        if !healed.is_empty() {
+                            healed_primaries += 1;
+                            healed_vertices += healed.len();
+                            for o in healed {
+                                let keys: std::collections::HashSet<[i32; 3]> = wood
+                                    .positions
+                                    .iter()
+                                    .filter(|&&q| near(q, o))
+                                    .map(|&q| (q * 1.0e4).round().as_ivec3().to_array())
+                                    .collect();
+                                healed_without_straddle += (keys.len() < 2) as u32;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        println!(
+            "ZZ primaries {primaries}: old reads open on {old_open}, new on {new_open}; healed {healed_primaries} primaries / {healed_vertices} vertices; \
+             new vertices the old lacks {new_not_in_old}; healed vertices without a straddling pair {healed_without_straddle}"
+        );
+        // The issue's repro: the willow with `branches.start` 0.34.
+        let mut params = TreePreset::Willow.params();
+        params.branches.start = 0.34;
+        let skeleton = generate_skeleton(&params);
+        let (mut old_bad, mut new_bad) = (Vec::new(), Vec::new());
+        for node in skeleton.nodes.iter().filter(|n| n.kind == NodeKind::Primary) {
+            let mut wood = tube_mesh(node, 4, params.branches.twist, Vec2::ONE);
+            wood.extend(&primary_base(node, node.start, node.base_radius, 4));
+            for (list, found) in [(&mut old_bad, rounded_open_boundary_vertices(&wood)), (&mut new_bad, open_boundary_vertices(&wood))] {
+                if found.iter().any(|&p| crate::skeleton::trunk_depth(&params.trunk, params.seed, p) <= 0.0) {
+                    list.push(node.id);
+                }
+            }
+        }
+        println!("ZZ willow start 0.34: primaries the first test would fail on, old helper {old_bad:?}, new helper {new_bad:?}");
     }
 
     #[test]
