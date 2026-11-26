@@ -7,6 +7,8 @@ All notable changes to `bevy_flora`. The format follows
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-25
+
 A second layer of plants, a brush stroke or a replant can keep clear of what already stands without a distance test against every tree (`docs/research/point-grid.md`), a parameter panel can ask the crate for every number of a tree, with its unit, range and default, and edit one with a refusal that says why (`docs/research/param-fields.md`), and the willow's strands carry leafy ribbons where they carried a leaf now and then (`docs/research/strand-leaves.md`, D-052) on a crown that is a dome as tall as it is wide instead of a flat mound round a bare pole (`docs/research/willow-habit.md`, D-052).
 
 ### Added
@@ -85,8 +87,8 @@ A second layer of plants, a brush stroke or a replant can keep clear of what alr
 - **Breaking:** `LeafPoint` has a new public field, `strand` (a struct literal of it needs one), and `FoliageParams` three,
   `strand_density`, `strand_size` and `strand_angle` (a literal needs them or `..Default::default()`; a `.tree.ron` or
   `.tree.yaml` without them loads with the defaults). The strand leaves of any tree with strands and leaf cards are
-  lances now, so a tree of your own with `branches.strands` draws different leaves (the oak's in the gallery do). The
-  next release is a minor one. The willow preset's eight values (the next entry) change its crown (taller, narrower, no
+  lances now, so a tree of your own with `branches.strands` draws different leaves (the oak's in the gallery do). This
+  release is a minor one (`cargo semver-checks`: 1 major check failed, `constructible_struct_adds_field`). The willow preset's eight values (the next entry) change its crown (taller, narrower, no
   bare pole), so a game that scatters willows sees a different tree.
 - **The willow is a dome as tall as it is wide, with no pole standing out of it** (D-052, `docs/research/willow-habit.md`; a
   design decision, D-082). The preset's crown was a flat umbrella round a bare pole: its limbs left the trunk nearly level
@@ -3273,7 +3275,8 @@ The first release.
   four-view renders and per-scenario statistics for visual QA) and `capture_growth` (the README
   clip).
 
-[Unreleased]: https://github.com/Ladvien/bevy_flora/compare/v0.47.1...HEAD
+[Unreleased]: https://github.com/Ladvien/bevy_flora/compare/v0.48.0...HEAD
+[0.48.0]: https://github.com/Ladvien/bevy_flora/compare/v0.47.1...v0.48.0
 [0.47.1]: https://github.com/Ladvien/bevy_flora/compare/v0.47.0...v0.47.1
 [0.47.0]: https://github.com/Ladvien/bevy_flora/compare/v0.46.1...v0.47.0
 [0.46.1]: https://github.com/Ladvien/bevy_flora/compare/v0.46.0...v0.46.1

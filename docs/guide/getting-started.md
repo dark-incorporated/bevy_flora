@@ -6,7 +6,7 @@ The crate features, the plugin's own behaviour, presets by name, and a tree's gr
 
 ```toml
 [dependencies]
-bevy_flora = "0.47"
+bevy_flora = "0.48"
 ```
 
 | feature | default | what it does |

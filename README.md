@@ -95,7 +95,7 @@ Right-drag and the wheel orbit, `[` `]` cycle the 20 presets, `Space` grows the 
 
 | `bevy_flora` | `bevy` | Rust |
 |---|---|---|
-| 0.47 | 0.20 | 1.97.1+ (edition 2024) |
+| 0.48 | 0.20 | 1.97.1+ (edition 2024) |
 
 ## Learn more
 
