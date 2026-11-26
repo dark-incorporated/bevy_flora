@@ -1888,3 +1888,20 @@ nothing notifies: run a script as the `bash` tool's own `async` command; `timeou
 commands are not on `PATH` either (call them from the tool shell, redirect to a file, parse it); `read` of a docs.unity.com URL prints 300 lines
 (use `curl | sed -n`); the probe (`examples/zz_probe.rs`, a rasteriser over a RON file) plus a Python generator of variants answers a habit question in
 seconds without a rebuild, and `inspect` takes `ZZ_PARAMS=<file.ron>` only in a throwaway copy. `gh issue list` printed nothing and exited 0 (empty).
+
+**Release and clean-up (iteration 17).** `loop/iter-17` pushed; merge `72ac8f1` on `main` (`--no-ff`; `main` held only the two research commits, `git diff
+loop/iter-17` is empty, so the merged tree is the branch's tree and the branch's gate is the merged tree's); `main` pushed (`4af80ab..72ac8f1`).
+**Released v0.48.0** (v0.47.1 was 7.0 h old; iterations 13 to 17 ride in it; `[Unreleased]` is empty again): `cargo semver-checks check-release --all-features`
+reported 1 major check failed (`constructible_struct_adds_field`: `FoliageParams` three fields, `LeafPoint` one), so a minor bump; commit `c696c5e` `release: v0.48.0`
+(`Cargo.toml`, `Cargo.lock`, `CHANGELOG.md`, the README's compatibility row, the guide's install line); `cargo publish --dry-run` 5 min 20 s on the packaged
+tree (the gate's own `cargo package --locked` had stopped once at "uncommitted changes" because `docs/media/README.md` was edited while the gate ran, and
+the dry-run after the bump is the packaged-tree verification); `cargo publish`; tag `v0.48.0` and `main` pushed (`72ac8f1..c696c5e`); the GitHub release
+<https://github.com/dark-incorporated/bevy_flora/releases/tag/v0.48.0>; crates.io <https://crates.io/crates/bevy_flora/0.48.0> (the API answers 0.48.0,
+not yanked, 4.3 MB). The dry-run printed a "consider updating to a version that is not yanked" help line for a dependency (the name was cut off by
+`tail`; not investigated). No issue referenced or closed (none was open); #96 is filed. Removed, mine: `/tmp/f17` (2.3 GB: the before and after release
+binaries of `gallery`, `forest`, `compare_gallery` and `inspect`, the 532-scenario galleries, the parity runs, the search variants, shots, bench output),
+the repo's `target/capture` (1.9 GB of clip frames), the throwaway `examples/zz_probe.rs`, `zz_inspect.rs` and `zz_node.rs` (never committed) and their binaries
+under `~/target/flora-loop`, its `semver-checks` directory and `package/bevy_flora-0.4*`. No worktree was made this pass. Kept: `~/target/flora-loop` (the warm
+`debug` and `release` builds). `df -h /`: 12 GB free at the start, 8.2 GB at the lowest, 13 GB after. Leftovers of earlier passes, listed and not touched: the worktree
+`/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at `42ec6a4`, uncommitted changes as in
+iteration 16: not a removal candidate), `wiggum/parked-pass-9-20261102-054127` (stale), and the branches `loop/iter-4` to `-17` (not deleted).
