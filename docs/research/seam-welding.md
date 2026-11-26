@@ -94,12 +94,34 @@ unchanged" does not apply.
 1. The issue's repro: the willow with `branches.start = 0.34`, `primary_bases_are_buried_in_the_trunk`'s own check, fails
    with the rounding helper (primary 151) and passes with the tolerance helper.
 2. A closed mesh with one seam pair straddling a rounding step reads open with the old helper and closed with the new; the
-   same mesh with one triangle removed reads open with both and names the same boundary; the pair moved apart by three
-   tolerances reads open with both (a real gap is not welded).
-3. Over every preset, many seeds and 4 and 6 sides (the two tests' counts), every vertex the old helper reported and the new
-   one does not has a partner within the tolerance on every axis; the new helper reports nothing the old one did not.
+   same mesh with one triangle removed reads open with both and names the same boundary; the pair moved 0.3 mm apart (three
+   tolerances, written in metres in the test so a tolerance raised past it fails) reads open with both (a real gap is not welded).
+3. Over every preset, many seeds and 4 and 6 sides (the two tests' counts), the new helper reports no open vertex the old one
+   did not, and every pair the old grid cut in two is a pair of vertices within the tolerance (the gap measured).
 4. The two protected tests pass on the unchanged presets; `cargo nextest run --all-features` passes as before.
 5. Nothing the crate builds changes: the diff is under `#[cfg(test)]`.
+
+## Measured
+
+Iteration 18, `cargo nextest run --all-features` on the branch (Apple M5, `test` profile), with the rounding helper kept beside
+the new one in a throwaway test (deleted before the commit):
+
+- **The repro.** The willow with `branches.start` 0.34 (the other seven habit values as shipped): the rounding helper fails
+  `primary_bases_are_buried_in_the_trunk`'s check on **primary 151**, the id the issue names; the tolerance helper on none.
+- **The synthetic mesh.** The closed tetrahedron whose first vertex is written twice, 2e-6 m apart across the 0.5e-4 step: the
+  rounding helper (emulated in Python with `f32` rounding, keys `(0,0,0)` and `(1,0,0)`) reads **four open edges**; the new
+  test passes (closed; the same mesh with a face removed names exactly the hole's three vertices; the pair 0.3 mm
+  apart reads open).
+- **A sweep** over the 20 presets, seeds 0 to 99 and 4 and 6 sides (**45 010** builds of a primary's tube plus its base, the
+  two tests' construction): the rounding helper read an open end on 32 243 (the root end, as designed), the tolerance helper on
+  32 238. **20 builds** (0.044 percent) held a coincident pair the rounding grid had cut in two. **The tolerance helper
+  reported no open vertex the rounding helper had not (0 of 32 238).** The largest gap between the two members of a cut pair was
+  **4.8e-7 m**; of the 104 pair observations in the healed builds (each pair seen from both members), **64** were a ring's seam
+  (the two vertices `sides` indices apart) and **40** were a different pair of rings that meet: a base dome's rim against the
+  tube's first ring (vertex 3 against vertex 44 of a 46-vertex wood with 4 sides). **Making the generator's seam copy
+  bit-identical, option (2) of the deviation below, would have fixed the first kind only.** Half of the healed vertices are
+  the far ends of the edges those twins closed.
+- The two protected tests and the new one pass; the rest of the suite is in the log.
 
 ## What great looks like
 
