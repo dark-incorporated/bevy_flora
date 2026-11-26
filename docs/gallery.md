@@ -30,11 +30,17 @@ that explains it, and `docs/media/README.md` gives every file its command, captu
 
 ## [How a tree looks](guide/appearance.md)
 
+### A willow's habit: a dome as tall as it is wide
+
+![The willow preset at 14 m: left as 0.47.1 drew it, a flat mound of leaves round a bare pole; right, a rounded dome that closes over the trunk's top, with the curtain hanging from its arches](media/willow-habit.jpg)
+
+*`cargo run --release --example inspect -- --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20`: left, the 0.47.1 binary; right, this one. The camera looks at half the tree's height, so the horizon sits lower on the right: the tree is 1.3 times as tall.*
+
 ### A willow's curtain: the leaves of a strand
 
 ![The willow preset at 14 m: left as 0.47.1 drew it, a fence of pale wires with a leaf now and then and the bare sky behind; right with the leaves of its strands out of line with their ropes, a leafy curtain that hangs to the grass](media/willow.jpg)
 
-*`cargo run --release --example inspect -- --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20`: left, the 0.47.1 binary; right, with `FoliageParams::strand_density`, `strand_size` and `strand_angle` set as the preset sets them.*
+*`inspect --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20` as the 0.47.1 build and the build with strand leaves drew it (the crown's habit changed in 0.48.0, above): left, the 0.47.1 binary; right, with `FoliageParams::strand_density`, `strand_size` and `strand_angle` set as the preset sets them.*
 
 ## [Forests](guide/forests.md)
 
