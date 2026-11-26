@@ -76,15 +76,34 @@ fn procedural_oak() -> bevy_flora::TreeParams {
 }
 ```
 
+### A willow's habit: a dome as tall as it is wide
+
+![The willow preset at 14 m: left as 0.47.1 drew it, a flat mound of leaves round a bare pole; right, a rounded dome that closes over the trunk's top, with the curtain hanging from its arches](../media/willow-habit.jpg)
+
+*`cargo run --release --example inspect -- --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20`: left, 0.47.1; right, 0.48.0.*
+
+A willow is "a stout trunk topped by a graceful broad-rounded crown of branches that sweep downward to the ground", 30 to 50 feet tall and as wide (Missouri Botanical Garden), and the preset's crown was a flat umbrella: its limbs left the trunk nearly level (46 degrees from vertical, `up_attraction` -0.5) and a gravity bend laid them over at once, longest at the top, so over eight seeds the crown's highest vertex stood 0.46 to 0.61 of its width above the ground and 1.00 to 1.14 times the trunk's height: the trunk's top was the tree's top, a bare pole. The generator already builds the arching limb a willow has (a direction with a vertical part, bent over by `t^2 * bend`), so the preset only sets where the limbs start: at 26 degrees from vertical (about 50 degrees above level) from 34.5 percent of a 4.6 m trunk, 0.85 of the trunk's height long, shorter toward the top (`apical_dominance` 0.55) and leaning out more there (`crown_angle_variation` 0.3). They rise, arch and weep, the top rounds off, and the strands below hang from the arches. The highest vertex is now 0.67 to 0.99 of the width and 1.3 to 1.7 times the trunk's height, with 3 percent fewer leaf triangles and 2 percent more wood. A species whose crown is wider than tall takes the same fields the other way: a larger `branches.angle` and a lower `up_attraction` leave the limbs flatter.
+
+```rust,no_run
+use bevy_flora::TreePreset;
+
+fn a_broader_willow() -> bevy_flora::TreeParams {
+    let mut willow = TreePreset::Willow.params();
+    willow.branches.angle = 40.0; // limbs leave flatter: a wider, lower crown
+    willow.branches.apical_dominance = 0.3; // and reach nearly as far at the top
+    willow
+}
+```
+
 ### A willow's curtain: the leaves of a strand
 
 ![The willow preset at 14 m, left as 0.47.1 drew it, right with the leaves of its strands out of line with their ropes: the left is a fence of pale wires with a leaf now and then and the bare sky behind, the right a leafy curtain that hangs to the grass](../media/willow.jpg)
 
-*`cargo run --release --example inspect -- --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20`: left, 0.47.1; right, with strand leaves.*
+*`inspect --preset willow --mode pool --distance 14 --eye 2.5 --fov 40 --yaw 20` as the 0.47.1 build and the build with strand leaves drew it (the crown's habit changed in 0.48.0, above): left, 0.47.1; right, with strand leaves.*
 
 A weeping tree is its strands (`BranchParams::strands`, [growing](growing.md)), and what a strand carries is `FoliageParams`' three strand numbers. `strand_density` is the share of `density` a strand's leaves have (a long thin twig has a row of leaves of its own spacing, not a branch's rate), `strand_size` the share of `leaf_size` they have, and `strand_angle` how far, in degrees, a strand's leaves point out of line with it: each leaf leaves its rope that far to the side that the golden angle's turn from the leaf before gives (spiral phyllotaxis), so the rope is a ribbon as wide as a leaf is long and not a wire with a leaf-wide trim. All three are 1, 1 and 0 for a tree that does not set them, which draws the leaves it always did, but every leaf of a strand is now cut as a four-point lance (the base, tip and two widest points of its scan's outline, wearing the same atlas): 8 vertices and 4 triangles for both sides where a scanned card has 20 and 16.
 
-The turn is the thing: seen from the front and the side, a probe that rasterises every triangle of the mature willow over the lower third of its crown covered 0.335 and 0.271 of it in 0.47.1 (a fence, two thirds sky) and 0.585 and 0.509 now, at 0.552 and 0.475 at the coarsest level of detail, whose leaves are the same lances, kept one in eight and scaled up. Raising the rate alone moved nothing (2.6 times the leaves along the ropes, at 0.7 of their size, in line with them: 0.336), and the rate is held by the growth: a leaf eases in over the growth of rope the next leaf takes, so a denser strand flushes quicker. The willow's 1.4 times keeps every leaf from changing by more than 0.3 of its size in a 0.01-year step (`a_leaf_that_appears_grows_from_nothing`), and 3 times did not. The willow's foliage is 40 900 triangles, down from 74 100, because the new leaves are cheaper than the ones they replace; its build time barely moves (4.4 ms against 4.7 for the mature tree).
+The turn is the thing: seen from the front and the side, a probe that rasterises every triangle of the mature willow over the lower third of its crown covered 0.335 and 0.271 of it in 0.47.1 (a fence, two thirds sky) and 0.585 and 0.509 with strand leaves (on that crown, before the dome above), at 0.552 and 0.475 at the coarsest level of detail, whose leaves are the same lances, kept one in eight and scaled up. Raising the rate alone moved nothing (2.6 times the leaves along the ropes, at 0.7 of their size, in line with them: 0.336), and the rate is held by the growth: a leaf eases in over the growth of rope the next leaf takes, so a denser strand flushes quicker. The willow's 1.4 times keeps every leaf from changing by more than 0.3 of its size in a 0.01-year step (`a_leaf_that_appears_grows_from_nothing`), and 3 times did not. The willow's foliage is 40 900 triangles, down from 74 100, because the new leaves are cheaper than the ones they replace; its build time barely moves (4.4 ms against 4.7 for the mature tree).
 
 ```rust,no_run
 use bevy_flora::TreePreset;

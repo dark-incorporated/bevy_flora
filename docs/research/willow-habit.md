@@ -88,14 +88,14 @@ Preset values only: the generator already builds an arching limb (a direction wi
 of its length) and the strands already hang from the outer wood. What the willow lacked was the start:
 
 - **Limbs leave steeper** (`angle` 46 -> 26 degrees from vertical; with `up_attraction` -0.4 the direction
-  leaves about 50 degrees above level, where 0.47.1's left at 8) and **from lower down** (`start` 0.4 -> 0.3),
+  leaves about 50 degrees above level, where 0.47.1's left at 8) and **from lower down** (`start` 0.4 -> 0.345),
   so the crown is a fountain that rises from the upper trunk and arches, not an umbrella at its top.
 - **The reach falls toward the top** (`apical_dominance` 0.2 -> 0.55: the topmost limb's apical factor is 0.72
   of a base limb's, was 0.9), **and the topmost limbs lean out more** (`crown_angle_variation` -0.3 -> +0.3: the
   top limb leaves 9 degrees flatter than the base one, where it was 9 degrees steeper), so the top rounds off
   in a dome and does not end in a vertical thread of leaves.
 - **Longer limbs on a shorter trunk** (`length` 0.7 -> 0.85, `trunk.height` 5.0 -> 4.6, `flatness` 0.2 -> 0.1):
-  the arch carries the crown to about 6.7 m (mean over eight seeds, 5.4 before), so the tree is 1.24 times the
+  the arch carries the crown to about 7.0 m (mean over eight seeds, 5.4 before), so the tree is 1.29 times the
   height it was and 0.81 times the width.
 
 `up_attraction` stays under -0.3 (`willow_values` pins it) and the crown is still `Hemispherical` and still
@@ -113,7 +113,7 @@ from three bearings (the scores alone picked narrow upright trees that read as e
 | Field | 0.47.1 | Now |
 |---|---|---|
 | `trunk.height` | 5.0 | 4.6 |
-| `branches.start` | 0.4 | 0.3 |
+| `branches.start` | 0.4 | 0.345 |
 | `branches.length` | 0.7 | 0.85 |
 | `branches.angle` | 46 | 26 |
 | `branches.up_attraction` | -0.5 | -0.4 |
@@ -144,12 +144,12 @@ The probe (`examples/zz_probe.rs`, deleted before the commit) on seeds 42, 1, 2,
 | | highest vertex over width | trunk top over the tree's top | foliage triangles (mean) | wood triangles (mean) | lowest leaf | lower third covered (front / side) | middle third (front / side) |
 |---|---|---|---|---|---|---|---|
 | 0.47.1 | 0.46 to 0.61 (median 0.53) | 88 to 100 % | 36 844 to 41 156 (38 895) | 37 818 to 40 800 (39 828) | -0.26 to 0 m | 0.48 to 0.57 / 0.44 to 0.62 | 0.40 to 0.67 / 0.47 to 0.63 |
-| now | 0.64 to 0.98 (median 0.84) | 59 to 79 % | 35 396 to 37 864 (36 946) | 40 404 to 41 064 (40 788) | -0.13 to 0.08 m | 0.41 to 0.53 / 0.43 to 0.55 | 0.47 to 0.67 / 0.49 to 0.66 |
+| now | 0.67 to 0.99 (median 0.88) | 58 to 76 % | 36 544 to 38 772 (37 889) | 40 416 to 40 890 (40 661) | -0.03 to 0.17 m | 0.41 to 0.52 / 0.42 to 0.56 | 0.47 to 0.66 / 0.50 to 0.69 |
 
-The crown is 1.24 times as tall and 0.81 times as wide, with 5 percent fewer leaf triangles and 2.4 percent
+The crown is 1.29 times as tall and 0.81 times as wide, with 2.6 percent fewer leaf triangles and 2.1 percent
 more wood; the curtain's lower-third cover is within 0.07 of what it was (the dome's box is taller, so the same
 ropes cover a smaller share of a larger area). The tree's top over its 99th-percentile leaf height (a thread of
-leaves above the dome) was 0.52 to 1.04 m in 0.47.1 (the bare pole) and is 0.43 to 1.04 now: this probe does not
+leaves above the dome) was 0.52 to 1.04 m in 0.47.1 (the bare pole) and is 0.45 to 1.05 now: this probe does not
 separate the two, and it is not a target; the pictures are what show the pole gone. Alternatives tried and
 dropped: `up_attraction` +0.2 and -0.2 gave an 8.7 m tree 10 m wide with the best silhouette and failed the
 protected `willow_values`; `apical_dominance` 1.0 made a ball 6 m across (taller than wide, no longer
@@ -170,9 +170,19 @@ the impostor's distance.
 - Eight preset fields move (table above): a design decision, an assumed owner decision recorded in D-082
   (`qa/visual_findings.md`). They are values and not a generator change because the generator already builds an
   arching limb and the same fields set every other preset's habit; no parameter was added.
+- `branches.start` is 0.345 and not the 0.3 the search scored best: the topmost limb sits
+  `spacing * (1 + frac(zone * density))` under the trunk's top (zone is `trunk.height * (end - start)`, spacing
+  `1 / density`), and the protected `willow_crown_reaches_the_top_of_the_trunk` asks for 0.93 of it; at 0.3 it was 0.906,
+  at 0.345 it is 0.94. 0.34 passed that test and failed `primary_bases_are_buried_in_the_trunk` (see below); 0.345 passes
+  both.
+- `primary_bases_are_buried_in_the_trunk` read a false open end on the first candidate (`start` 0.34, willow primary 151,
+  seed 42): its helper `open_boundary_vertices` welds vertices on a 0.1 mm rounding grid, and a seam pair of one ring
+  that lay either side of a rounding step (y 4.3598 and 4.3599, the same vertex) read as an open edge 1.25 m out. The
+  protected helper was not changed (a check changes only additively); the preset moved 0.005 off it and the finding is
+  filed for the owner (backlog 5 of iteration 17's log).
 - `up_attraction` is left at -0.4 although the best silhouette seen in the search had it at -0.2: `willow_values`
   pins it under -0.3 and a protected check is not loosened.
-- The ratio is 0.84 at the median and 0.64 at the least, not the species' 1: a taller tree costs triangles in
+- The ratio is 0.88 at the median and 0.67 at the least, not the species' 1: a taller tree costs triangles in
   proportion, the strands keep a hand's breadth off the ground, and the height varies by 1.6 times over seeds
   (below). The target is 0.6, which the pole never met on four of five seeds.
 
