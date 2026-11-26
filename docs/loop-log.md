@@ -1759,3 +1759,132 @@ start, 8.0 GB at the lowest, 12 GB after. Leftovers of earlier passes, listed an
 `/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at `42ec6a4`, with
 uncommitted changes to `.github/workflows/ci.yml`, `.omp/commands/build-loop.md` and `AGENTS.md` as in iteration 15: not a removal
 candidate), `wiggum/parked-pass-9-20261102-054127` (stale), and the branches `loop/iter-4` to `-16` (not deleted).
+
+## Iteration 17 — 2026-11-25 — The willow is a dome as tall as it is wide, with no pole standing out of it (D-052)
+
+**What changed and why it ranked first.** The filed-issue list was empty (`gh issue list` printed nothing and `--state all` showed
+#91 to #95 closed; the F6 family issue `bevy-coven/bevy_grimoire#102` is closed with its acceptance met and the clip owed by the
+editor; no `consumer:bevy_flora` issue is open in `bevy_grimoire`, `bevy_emerge`, `bevy_elements`, `bevy_lights`, `bevy_carnage`,
+`bevy_society`, `bevy_gooey`, `bevy_fairy`, and `Ladvien/sanctuary` has none), and the one parked branch
+(`wiggum/parked-pass-9-20261102-054127`) is stale (the item it parked, `TreeParams::sanitized`, shipped in 0.47.1). So the pass
+took the loop's own open visual defect, D-052, and the item its iteration-16 critique put first: "the crown's top is bare arcs on a
+slim flat-capped pole". Measured on eight seeds the mature willow's highest vertex stood **0.46 to 0.61 of its width** (the
+Missouri Botanical Garden's: 30 to 50 feet tall and as wide) and **1.00 to 1.14 times the trunk's height**: the pole was the top of
+the tree, a flat mound round it (`inspect --preset willow` at 14, 20, 30 and 120 m, the pool's impostor included). The fix is eight
+values of the preset, nothing in the generator (it already builds an arching limb: a direction with a vertical part bent over by
+`t^2 * bend`): `trunk.height` 5.0 -> 4.6, `branches.start` 0.4 -> 0.345, `length` 0.7 -> 0.85, `angle` 46 -> 26, `up_attraction`
+-0.5 -> -0.4, `flatness` 0.2 -> 0.1, `apical_dominance` 0.2 -> 0.55, `crown_angle_variation` -0.3 -> 0.3: the limbs leave at about 50
+degrees above level (8 before), rise, arch and weep, shorter and flatter toward the top. Over the same eight seeds the highest
+vertex is **0.67 to 0.99 of the width (median 0.88) and 1.3 to 1.7 times the trunk's height**; the tree is 1.29 times as tall
+and 0.81 times as wide; foliage -2.6% in triangles, wood +2.1% (the 36 willow scenarios: -5.3% and +3.4%). A new test holds it
+(`willow_is_a_dome_about_as_tall_as_it_is_wide_and_no_pole_stands_out_of_it`, five seeds: at least 0.6 of the width and 1.2 times
+the trunk; 0.47.1 fails it on every seed), and the protected willow tests are untouched and pass (`up_attraction` under -0.3,
+limbs to 0.93 of the trunk, a curtain to the ground, tips and leaves that hang). Runners-up: GPU parity of the willow (iteration
+16's backlog 2: 1.043 on `age_willow_6`, which this change also closed, see below), a glide with no per-tree cost, a slider range
+and a label per field, the hull crown by leaf size; none was a filed request.
+
+**Sources.** Botanical/model: Duchemin, Eloy, Badel and Moulia 2018, "Tree crowns grow into self-similar shapes controlled by
+gravity and light sensing" (`10.1098_rsif.2017.0976`: "In many tree species the outer shape of the crown is a criterion for species
+identification ... The Mediterranean cypress has a distinctive elongated shape, while birch and oaks show more spherical shapes,
+and the Norway spruce has a conical profile"; "the self-similar solutions always feature a pointed top"), the Missouri Botanical
+Garden Plant Finder for *Salix babylonica* (read this pass: "a stout trunk topped by a graceful broad-rounded crown of branches
+that sweep downward to the ground", height and spread 30 to 50 feet) and Orwa et al. 2009 ("usually dividing near the ground,
+crown open, branches pendulous"). Shipping practice: the SpeedTree Modeler manual, "Shape control" ("lets you quickly confine
+your tree within a shape"; "Deformations ... such as noise, gravity, and forces, all happen after shape control. Because of this,
+they are capable of pulling your branches outside the desired shape") and the Branch generator's "Shape" and "Prune" tables.
+Technical: `book_level_of_detail_3d_graphics_luebke` (an impostor "will render a realistic silhouette regardless of viewing angle"),
+and this crate's own rasteriser probe. Note: `docs/research/willow-habit.md`. Pending index: Weber and Penn 1995, Hollender et
+al., and the web sources (Missouri Botanical Garden, Orwa, the SpeedTree manual). Corpus re-scan: `catalog_recent` (200 rows,
+75 documents) held nothing on trees, growth, foliage, wind, fire or level of detail (medical and games papers), so `corpus.md` is
+unchanged. HomeStill: `system_status` answered (19 543 documents, 19 387 embedded), distill up, scribe healthy; the CLI fallback was
+not needed.
+
+**Numbers** (`/tmp/f17`, findings in `/tmp/f17/findings.md`, critique in `/tmp/f17/critique.md`; both removed with the scratch).
+
+- Gate, on the branch tree: `cargo nextest run --all-features` **399 passed** (398 + the new test), `cargo test --all-features --doc` 40
+  passed, `cargo clippy --all-targets --all-features -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`,
+  `cargo build`, `--features serde`, `cargo check --no-default-features --lib`, `cargo build --examples` and with `--all-features`,
+  `cargo package --locked`: see the release block below for the last three. No existing assertion changed.
+- **A false failure, and what was done about it.** The first candidate (`branches.start` 0.34) failed the protected
+  `primary_bases_are_buried_in_the_trunk` ("willow: primary 151 has an open end -1.2456 m outside the trunk"). The wood is closed:
+  the helper `open_boundary_vertices` welds on a 0.1 mm rounding grid and a seam pair of one ring that straddled a step (y 4.3598 and
+  4.3599, the same vertex) read as an open edge, at three consecutive rings. The helper is protected, so it was not changed: the
+  preset moved 0.005 (`start` 0.345, which also satisfies `willow_crown_reaches_the_top_of_the_trunk` at 0.94 of the trunk where 0.3
+  gave 0.906) and the fragility is filed as **#96** with the repro and the fix (weld by tolerance), for the owner.
+- Gallery, 532 scenarios before and after (Apple M5): PNG = rows, none under 100 KB, flags `-` x 532 before and after, no
+  `BLANK_CAPTURE`/`CAPTURE_TIMEOUT`, no `ERROR`/`panicked`, three benign `WARN`s. **496 of 532 images byte-identical; the 36 that
+  changed are the 36 willow scenarios** (the four one-pixel ones of earlier iterations came out identical this time). `stats.tsv`
+  columns 1-9 identical for the other 496; identical across a second run (the willow filter against the full run) and CPU against
+  `--gpu`. mature_willow: 572 -> 530 nodes, highest vertex 5.15 -> 6.06 m, lowest vertex -0.08 -> 0.00 m.
+- Habit probe (`examples/zz_probe.rs`, deleted before the commit; seeds 42 and 1 to 7, mature, level 0): highest vertex over width 0.46 to 0.61
+  -> 0.67 to 0.99; trunk top over the tree's top 88-100% -> 58-76%; foliage triangles 36 844-41 156 (38 895) -> 36 544-38 772 (37 889);
+  wood 37 818-40 800 (39 828) -> 40 416-40 890 (40 661); lowest leaf -0.26..0 -> -0.03..0.17 m; lower third covered (front / side)
+  0.48-0.57 / 0.44-0.62 -> 0.41-0.52 / 0.42-0.56. The search that found the values: grid and random searches over eight preset fields (several
+  hundred variants, three to eight seeds), then the survivors looked at; the scores alone picked narrow upright trees that read as elms.
+  `build_tree` of the willow: both binaries 4.6 to 4.8 ms at best and 10 to 15 ms under load 5 to 15 (a probe run at load that varied
+  by three times cannot separate them; no code path of the builder changed).
+- **GPU parity (`compare_gallery`): better, not worse.** The CI seven: mean of means 0.235 -> **0.098**, worst 1.043 (`age_willow_6`)
+  -> **0.201** (`grow_oak_6`, unchanged), `age_willow_6` 0.084, worst close 96.27% -> 99.18%, exit 0. The 36 willow scenarios: mean
+  of means 0.179 -> **0.055**, worst 1.350 -> **0.518**, worst close 93.42% -> 98.08%, exit 0. No `ERROR`/`panicked` in the `--gpu`
+  logs. [INFERENCE: the iteration-16 loss came from the leaf cover (crown shading and normals baked at maturity); the dome has less
+  leaf cover per box area and a closer crown centre; not isolated.]
+- Forest bench (`pool`, 10 000 oaks, three alternating before/after pairs, load 5 to 15 and my own `inspect` renders overlapping the
+  first pair): ms/frame median of medians 11.28 -> 10.60, cpu 32.13 -> 32.32 ms/frame (+0.6%), p95 15.23 -> 12.80 on the quiet pair; a pool of oaks
+  runs no code this change reaches (an oak's meshes are bit-identical). `naive --trees 1000`: first pair 37.19 / 37.46 ms median (+0.7%), cpu 40.53 / 40.70; the other two pairs
+  overlapped the parity galleries and are not quoted. `gpu-live` was not run (it printed nothing within 150 s in iterations 15 and 16).
+
+**Critique and verdict** (`/tmp/f17/critique.md`; read at full frame `mature_willow` and `seed_willow_3`, a nine-image sheet of the front
+views of `mature_willow`, `seed_willow_1` to `3`, `age_willow_12`, `grow_willow_inf`, `split_willow`, `smooth_willow` and `wobble_willow`, a
+second sheet of `age_willow_4`, `6`, `8`, `grow_willow_3`, `5`, `7`, `season_willow_winter`, `season_willow_falling` and `condition_willow_dying`, and
+`inspect --preset willow` at 14, 20, 30 and 120 m against the 0.47.1 binary, three bearings at 20 m). **The habit is GREAT**: the pole is gone at every
+distance, the crown closes over the trunk's top, the curtain hangs, the pool's impostor at 120 m is a dome, no flag, no hole, deterministic, GPU
+parity four times better (`docs/media/willow-habit.jpg`). **D-052 as a whole stays NOT YET**: (a) on four seeds in eight one steep top limb
+stands out of the dome as a thin wisp of leaves, up to 1.05 m (1.49 over twelve seeds; `seed_willow_3`); a quick search over
+`apical_dominance`, `crown_angle_variation`, `randomness` and `angle` moved it from 0.90 to at best 0.73 mean at the cost of a narrower
+tree, so it stays; (b) at gallery distance the sides are near-vertical and the tree reads as a leafy column, the weeping carried by the
+fringe and the arches; a wider silhouette needs `up_attraction` above -0.3, which `willow_values` pins; (c) the curtain's cover of the lower third fell by
+about 0.07 against the larger box; (d) a young tree (age 4 and 6) is a bare thick pole with a few arching limbs, the growth model's, unchanged;
+(e) the earlier list: a six-point lance under 2 m, a greener strand colour, the dome's 16-triangle leaves beside the strands' lances.
+
+**README clips** (the release re-records all eleven, `AGENTS.md`): five changed, the ones whose grove holds the willow (`grove`,
+`seasons`, `shake`, `fell`, `fire`); `growth`, `push`, `chop`, `harvest`, `playground` and `isometric` came out byte-identical to the
+committed files (deterministic, fixed clock). `ffprobe`: `growth.gif` 480x360 24 fps 192 frames 4.7 MB; `grove`, `seasons`, `shake`, `fell`,
+`fire`, `push`, `chop`, `harvest` 560x315 20 fps 160 frames 6.6, 6.2, 5.4, 3.2, 4.1, 4.3, 4.8 and 2.8 MB; `playground` and `isometric` 560x315 16 fps
+128 frames 6.6 and 6.7 MB. The first, a middle and the last frame of each were read (two contact sheets): the grove clips show the new willow, a
+dome with its fringe, at the left. The frame times the README, `src/lib.rs`, `src/pool.rs` and `ARCHITECTURE.md` quote (7.6 ms, 6.5 and 25 ms, 0.81
+and 17.6 ms) are Apple M4 Pro figures from earlier releases; this host is an M5 that other loops were using at load 5 to 16, so they were
+**not re-measured and not changed** (a stated deviation from `AGENTS.md` step 1: a loaded reading would have replaced a true one with a wrong one).
+
+**Commits** (`loop/iter-17`): `4b5a420` and `9c7f74a` Research: willow habit (the second corrects the first's numbers before any code), `7d91719` the
+preset and the test, `f803964` docs (CHANGELOG, guide, gallery, media list, `docs/media/willow-habit.jpg`, the note), `2653442` the five clips. Sibling
+repositories: none touched. Filed: **#96** (the helper). **For Sanctuary and the editor:** a game that scatters willows sees a different tree (taller, narrower,
+no pole); the preset's eight values are the only change, `TreeParams::fields()` still lists 95 numbers and a `.tree.ron` of a willow of your own is unaffected.
+
+**Assumed decisions** (owner may override; no issue to record them on, so here, in the note's Deviations and in D-082): the willow's habit is a design
+change of eight preset values and not a generator feature; `up_attraction` stays under -0.3 (a protected test) although +0.2 drew the best silhouette; `branches.start` is
+0.345 for the protected 0.93 rule and for the helper's coincidence; the protected helper is left as it is and filed as #96.
+
+### Ranked backlog after iteration 17
+
+1. **Finish the willow (D-052)**: the wisp above the dome (one steep top limb on four seeds in eight, up to 1.05 m; the tallest limb sets
+   a 1.3 times spread of heights, and `randomness` 0.3 can tilt a top limb to 64 degrees), a six-point lance under 2 m, a flush window that lets a strand's rate rise past
+   1.4 (a `GrowthState` field and a shader change), a greener strand colour (needs a per-node wood colour), the dome's own 16-triangle
+   leaves beside the strands' lances. A wider-than-tall dome needs `up_attraction` above -0.3, which `willow_values` pins.
+2. **The protected helper `open_boundary_vertices` (#96)**: weld by tolerance instead of a 0.1 mm rounding grid; it read a false open
+   edge on a willow primary and will do so on any look change that lands a seam pair on a rounding step (about 0.2% a primary).
+   Needs the owner's word to touch a protected test.
+3. **A glide with no per-tree cost** (iteration 11's item 2): a leaf marker so only leaf meshes are tagged, or a shared slot in the
+   buffer for trees that began together; the leaves a glide loses falling (`LeafBurst`).
+4. **A slider range and a label per field**: a `typical` span and a one-line label for each `ParamField`, if the editor asks.
+5. **The hull crown by leaf size** (`crown_hull` takes positions only, so a CPU-grown hull crown pops when a leaf is born);
+   `PointGrid::nearest` only when a consumer asks. Also found, not a crate item: Sanctuary's `forest.rs` writes world-space capsules
+   for a lying trunk and a log by hand (`world.transform_point(c.a)`, `radius * world.scale.x`, the stump's circle from
+   `pool.params.base_radius()`); a `TreeShape` / `TreeLog` method that takes a `Transform` would be the general form, if its loop asks.
+
+**Environment, for the next pass.** `CARGO_INCREMENTAL=0` is still needed. This pass's slips, not repeated: a debug test build of this crate took
+7 to 16 minutes and a release build 12 under other loops' load (load 13 to 16; each gate variant, `cargo build`, `--features serde`, `cargo test
+--doc`, the examples, `cargo package`, recompiles `bevy_flora` alone for about 6 minutes); `nohup` scripts are not jobs, so `wait` returns at once and
+nothing notifies: run a script as the `bash` tool's own `async` command; `timeout` is not on `PATH` inside a script on this Mac; the `mcp__home_still_*`
+commands are not on `PATH` either (call them from the tool shell, redirect to a file, parse it); `read` of a docs.unity.com URL prints 300 lines
+(use `curl | sed -n`); the probe (`examples/zz_probe.rs`, a rasteriser over a RON file) plus a Python generator of variants answers a habit question in
+seconds without a rebuild, and `inspect` takes `ZZ_PARAMS=<file.ron>` only in a throwaway copy. `gh issue list` printed nothing and exited 0 (empty).
