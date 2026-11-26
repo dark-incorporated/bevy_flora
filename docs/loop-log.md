@@ -1993,3 +1993,14 @@ exception: open_boundary_vertices`.
 **Environment, for the next pass.** `CARGO_INCREMENTAL=0` is still needed. The disk was at 98% (13 GB free at the start, 9.6 GB after two test builds and the gate): a debug test build of
 `bevy_flora` takes 8 minutes and a non-test dev build 12 to 17 under other loops' load; `sccache` printed "the server looks like it shut down unexpectedly, compiling locally
 instead" twice (harmless). A script run as the `bash` tool's own `async` command with `notify` reports back; a file edit through the edit tool needs the tag of the last edit's response.
+
+**Release and clean-up (iteration 18).** `loop/iter-18` pushed; merge `23a6062` on `main` (`--no-ff`; `main` held only the research commit, so `git diff loop/iter-18` is empty and the branch's gate is
+the merged tree's); `main` pushed (`693d080..23a6062`). **No release:** v0.48.0 was published at 18:56 and was about 1 h 20 min old when this pass merged, under the 6 hours between
+releases, so the `Fixed` entry waits in `## [Unreleased]` for the next one (a test-only change; no clip re-recorded). #96 closed itself on the push of `main` (`Fixes #96` in `0fc2ef2`); the
+label `assumed-decision` and the comment "Assumed decision (owner may override)" with the options, the sweep and the verification were added to it. Removed, mine: `/tmp/f18` (96 KB: the gate
+scripts and logs, findings, critique, the log draft), `/tmp/f18_recent.json`, `~/target/flora-loop/package/bevy_flora-0.48.0` and its `.crate` (4.3 MB); the throwaway sweep test was deleted before
+the commit. No worktree was made this pass. Kept: `~/target/flora-loop` (the warm `debug`, `release` and `doc` builds). `df -h /`: 13 GB free at the start, 9.4 GB after (the two test builds, the
+dev builds and the gate went into the kept target directory). Leftovers of earlier passes, listed and not touched: the worktree
+`/Users/ladvien/.local/state/dark-inc-docs/20261122T0456Z/wt/bevy_flora` (branch `docs/regenerate-20261122T0456Z`, at `42ec6a4`, 86 MB, **47 uncommitted changes** including `.github/workflows/ci.yml`,
+`.omp/commands/build-loop.md`, `AGENTS.md`, `CLAUDE.md` and `Cargo.toml`: not a removal candidate), `~/target/flora-loop/package/tmp-crate` (8.2 MB, from iteration 17's publish at 18:57),
+`/tmp/f13_catalog_recent.txt` (128 KB, iteration 13's), `wiggum/parked-pass-9-20261102-054127` (stale), and the branches `loop/iter-4` to `-18` (not deleted).
